@@ -3,6 +3,16 @@ import { listarDenuncias, atualizarDenuncia } from '../services/api'
 
 const STATUS_ORDEM = ['PENDENTE', 'EM_ANALISE', 'RESOLVIDA']
 
+const STATUS_LABEL = {
+  PENDENTE: 'PENDENTE',
+  EM_ANALISE: 'EM ANÁLISE',
+  RESOLVIDA: 'RESOLVIDA',
+}
+
+function statusLabel(status) {
+  return STATUS_LABEL[status] ?? (status?.replace('_', ' ') ?? status)
+}
+
 function proximoStatus(atual) {
   const idx = STATUS_ORDEM.indexOf(atual)
   if (idx === -1 || idx === STATUS_ORDEM.length - 1) return null
@@ -42,6 +52,7 @@ export default function Denuncias() {
   async function handleAvancar(denuncia) {
     const novo = proximoStatus(denuncia.statusDenuncia)
     if (!novo) return
+    setErro(null)
     setAtualizando(denuncia.id)
     try {
       await atualizarDenuncia(denuncia.id, { statusDenuncia: novo })
@@ -76,7 +87,7 @@ export default function Denuncias() {
               className={filtro === f ? 'btn-primary' : 'btn-secondary'}
               style={{ width: 'auto' }}
             >
-              {f === 'Todas' ? 'Todas' : f.replace('_', ' ')}
+              {f === 'Todas' ? 'Todas' : statusLabel(f)}
             </button>
           ))}
         </div>
@@ -113,16 +124,16 @@ export default function Denuncias() {
                       <td>{d.loja?.nome || '—'}</td>
                       <td>{d.consumidor?.nome || '—'}</td>
                       <td style={{ maxWidth: 220 }}>{descricao || '—'}</td>
-                      <td><span className={badgeClass(d.statusDenuncia)}>{d.statusDenuncia?.replace('_', ' ')}</span></td>
+                      <td><span className={badgeClass(d.statusDenuncia)}>{statusLabel(d.statusDenuncia)}</span></td>
                       <td>{d.dataDenuncia ? new Date(d.dataDenuncia).toLocaleDateString('pt-BR') : '—'}</td>
                       <td>
                         <button
                           className="btn-secondary"
                           disabled={!proximo || atualizando === d.id}
                           onClick={() => handleAvancar(d)}
-                          title={proximo ? `Avançar para ${proximo.replace('_', ' ')}` : 'Status final'}
+                          title={proximo ? `Avançar para ${statusLabel(proximo)}` : 'Status final'}
                         >
-                          {atualizando === d.id ? 'Salvando...' : proximo ? `→ ${proximo.replace('_', ' ')}` : 'Resolvida'}
+                          {atualizando === d.id ? 'Salvando...' : proximo ? `→ ${statusLabel(proximo)}` : 'Resolvida'}
                         </button>
                       </td>
                     </tr>

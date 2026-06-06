@@ -8,7 +8,11 @@ export default function Layout() {
 
   useEffect(() => {
     window.electronAPI?.auth.getNome().then(n => { if (n) setNome(n) })
-  }, [])
+    const unsubscribe = window.electronAPI?.auth.onSessaoExpirada?.(() => {
+      navigate('/login')
+    })
+    return () => unsubscribe?.()
+  }, [navigate])
 
   async function logout() {
     await window.electronAPI?.auth.limparToken()

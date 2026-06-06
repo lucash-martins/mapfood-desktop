@@ -65,6 +65,12 @@ export async function listarConsumidores() {
 export async function deletarConsumidor(id) {
   return window.electronAPI?.db.deletarConsumidor(id)
 }
+export async function deletarConsumidorCascade(id) {
+  return window.electronAPI?.db.deletarConsumidorCascade(id)
+}
+export async function verificarDadosConsumidor(id) {
+  return window.electronAPI?.db.verificarDadosConsumidor(id)
+}
 
 // Comerciantes — via IPC
 export async function listarComerciantes() {
@@ -73,7 +79,9 @@ export async function listarComerciantes() {
 export async function deletarComerciante(id) {
   return window.electronAPI?.db.deletarComerciante(id)
 }
-
 export async function deletarComercianteCascade(id) {
   return window.electronAPI?.db.deletarComercianteCascade(id)
+}
+export async function verificarDadosComerciante(id) {
+  return window.electronAPI?.db.verificarDadosComerciante(id)
 }

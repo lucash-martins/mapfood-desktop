@@ -6,6 +6,17 @@ const connectivityService = require('./connectivityService')
 const BASE_URL = 'http://localhost:8080'
 const SYNC_INTERVAL_MS = 5 * 60 * 1000
 
+// ─── JWT helpers ───────────────────────────────────────────────────────────
+
+function isJwtExpired(token) {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'))
+    return typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()
+  } catch {
+    return true
+  }
+}
+
 let _timer = null
 let _syncing = false
 let _pendingRetry = false
@@ -91,11 +102,11 @@ async function pushPendingOps(token) {
         const apiPath = pathMap[op.entity]
         if (apiPath) await httpRequest('DELETE', apiPath, null, token)
       }
-      database.removePendingOp(op.id)
       if (op.operation === 'update') {
         if (op.entity === 'loja') database.marcarLojaSync(op.entity_id)
         if (op.entity === 'denuncia') database.marcarDenunciaSync(op.entity_id)
       }
+      database.removePendingOp(op.id)
       if (op.operation === 'delete') {
         if (op.entity === 'consumidor') database.removerConsumidor(op.entity_id)
         if (op.entity === 'comerciante') database.removerComerciante(op.entity_id)
@@ -105,8 +116,11 @@ async function pushPendingOps(token) {
     } catch (err) {
       console.error(`[sync] Push ${op.entity}#${op.entity_id} falhou:`, err.status, err.message)
       if (err.status && err.status >= 400 && err.status < 500) {
-        // Erro permanente de negócio (4xx) — descarta o pending_op sem retry
         console.warn(`[sync] Descartando op ${op.id} (${op.entity}#${op.entity_id}): erro permanente ${err.status}`)
+        if (op.operation === 'update') {
+          if (op.entity === 'loja') database.marcarLojaSync(op.entity_id)
+          if (op.entity === 'denuncia') database.marcarDenunciaSync(op.entity_id)
+        }
         database.removePendingOp(op.id)
       } else {
         database.incrementPendingOpRetry(op.id, err.message)
@@ -120,17 +134,35 @@ async function pushPendingOps(token) {
 async function pullAll(token) {
   const endpoints = [
     { path: '/lojas', upsert: (item) => database.upsertLoja(item) },
-    { path: '/denuncias', upsert: (item) => database.upsertDenuncia(item) },
+    {
+      path: '/denuncias',
+      upsert: (item) => database.upsertDenuncia(item),
+      reconcile: (serverIds) => {
+        const locals = database.listarTodasDenuncias()
+        const pendingIds = new Set(
+          database.getPendingOps()
+            .filter(o => o.entity === 'denuncia')
+            .map(o => o.entity_id)
+        )
+        for (const local of locals) {
+          // Remove se não está no servidor E (não está dirty OU está dirty mas não tem pending_op — órfão)
+          if (!serverIds.has(local.id) && (!local.dirty || !pendingIds.has(local.id))) {
+            database.removerDenuncia(local.id)
+          }
+        }
+      },
+    },
     { path: '/avaliacoes', upsert: (item) => database.upsertAvaliacao(item) },
     { path: '/consumidores', upsert: (item) => database.upsertConsumidor(item) },
     { path: '/comerciantes', upsert: (item) => database.upsertComerciante(item) },
   ]
 
-  await Promise.all(endpoints.map(async ({ path, upsert }) => {
+  await Promise.all(endpoints.map(async ({ path, upsert, reconcile }) => {
     try {
       const { body } = await httpRequest('GET', path, null, token)
       const items = Array.isArray(body) ? body : (body?.content ?? [])
       for (const item of items) upsert(item)
+      if (reconcile) reconcile(new Set(items.map(i => i.id)))
     } catch (err) {
       console.warn(`[sync] Pull ${path} falhou:`, err.message)
     }
@@ -153,7 +185,10 @@ async function syncCompleto(win) {
 
   try {
     const token = database.get('admin_token')
-    if (!token) throw new Error('Sem token de autenticacao')
+    if (!token) {
+      if (w) w.webContents.send('sync:status-changed', { estado: 'idle' })
+      return { sucesso: false, erro: 'Sem token' }
+    }
 
     await pushPendingOps(token)
     await pullAll(token)

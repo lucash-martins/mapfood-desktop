@@ -4,11 +4,10 @@ import { listarLojas, atualizarLoja } from '../services/api'
 function badgeClass(status) {
   if (status === 'ATIVA') return 'badge badge-success'
   if (status === 'INATIVA') return 'badge badge-muted'
-  if (status === 'SUSPENSA') return 'badge badge-danger'
   return 'badge badge-muted'
 }
 
-const FILTROS_STATUS = ['Todas', 'ATIVA', 'INATIVA', 'SUSPENSA']
+const FILTROS_STATUS = ['Todas', 'ATIVA', 'INATIVA']
 
 export default function Lojas() {
   const [lojas, setLojas] = useState([])
@@ -112,16 +111,16 @@ export default function Lojas() {
                     <td>{loja.dataCadastro ? new Date(loja.dataCadastro).toLocaleDateString('pt-BR') : '—'}</td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
-                        {loja.statusLoja !== 'SUSPENSA' && (
+                        {loja.statusLoja === 'ATIVA' && (
                           <button
                             className="btn-danger"
                             disabled={atualizando === loja.id}
-                            onClick={() => handleMudarStatus(loja, 'SUSPENSA')}
+                            onClick={() => handleMudarStatus(loja, 'INATIVA')}
                           >
-                            {atualizando === loja.id ? '...' : 'Suspender'}
+                            {atualizando === loja.id ? '...' : 'Inativar'}
                           </button>
                         )}
-                        {(loja.statusLoja === 'INATIVA' || loja.statusLoja === 'SUSPENSA') && (
+                        {loja.statusLoja === 'INATIVA' && (
                           <button
                             className="btn-secondary"
                             disabled={atualizando === loja.id}

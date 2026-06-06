@@ -9,6 +9,7 @@ export function useSyncStatus() {
     window.electronAPI?.sync.getUltimaSync().then(setUltimaSync)
     const unsubscribe = window.electronAPI?.sync.onSyncStatus(status => {
       setEstado(status.estado)
+      if (status.estado !== 'erro') setMensagem(null)
       if (status.mensagem) setMensagem(status.mensagem)
       if (status.timestamp) setUltimaSync(status.timestamp)
     })

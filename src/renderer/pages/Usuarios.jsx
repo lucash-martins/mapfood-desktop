@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { listarConsumidores, listarComerciantes, listarLojas, deletarConsumidor, deletarComerciante, deletarComercianteCascade } from '../services/api'
+import { listarConsumidores, listarComerciantes, deletarConsumidor, deletarConsumidorCascade, verificarDadosConsumidor, deletarComerciante, deletarComercianteCascade, verificarDadosComerciante } from '../services/api'
 
 const tabStyle = (ativo) => ({
   padding: '0.5rem 1.25rem',
@@ -58,11 +58,30 @@ export default function Usuarios() {
   }, [])
 
   async function handleRemoverConsumidor(id) {
-    if (!window.confirm('Remover este consumidor?')) return
-    setRemovendo(id)
     setErro(null)
+    let dados = null
+    try { dados = await verificarDadosConsumidor(id) } catch {}
+    const temDados = dados && (dados.avaliacoes > 0 || dados.denuncias > 0)
+
+    let confirmado
+    if (temDados) {
+      const linhas = ['Este consumidor possui dados vinculados que também serão excluídos:']
+      if (dados.avaliacoes > 0) linhas.push(`• ${dados.avaliacoes} avaliação(ões)`)
+      if (dados.denuncias > 0) linhas.push(`• ${dados.denuncias} denúncia(s)`)
+      linhas.push('\nDeseja excluir o consumidor e todos os dados vinculados?')
+      confirmado = window.confirm(linhas.join('\n'))
+    } else {
+      confirmado = window.confirm('Remover este consumidor?')
+    }
+
+    if (!confirmado) return
+    setRemovendo(id)
     try {
-      await deletarConsumidor(id)
+      if (temDados) {
+        await deletarConsumidorCascade(id)
+      } else {
+        await deletarConsumidor(id)
+      }
       setConsumidores(prev => prev.filter(c => c.id !== id))
     } catch (e) {
       setErro('Erro ao remover consumidor.')
@@ -72,39 +91,36 @@ export default function Usuarios() {
   }
 
   async function handleRemoverComerciante(id) {
-    const todasLojas = await listarLojas()
-    const lojasDoComerciante = (todasLojas || []).filter(l => l.comercianteId === id)
+    setErro(null)
+    let dados = null
+    try { dados = await verificarDadosComerciante(id) } catch {}
+    const temDados = dados && (dados.lojas > 0 || dados.avaliacoes > 0 || dados.denuncias > 0)
 
-    if (lojasDoComerciante.length > 0) {
-      const qtd = lojasDoComerciante.length
-      const msg = `Este comerciante possui ${qtd} loja${qtd > 1 ? 's' : ''} associada${qtd > 1 ? 's' : ''}.\nAo excluí-lo, as lojas também serão excluídas.\n\nDeseja continuar?`
-      if (!window.confirm(msg)) return
-      setRemovendo(id)
-      setErro(null)
-      try {
-        await deletarComercianteCascade(id)
-        setComerciantes(prev => prev.filter(c => c.id_comerciante !== id))
-      } catch (e) {
-        setErro(
-          e?.status === 409 || e?.message?.includes('409')
-            ? 'Não foi possível excluir: as lojas possuem dados vinculados (pedidos, denúncias ou outros registros) que impedem a exclusão. Remova esses dados pelo sistema antes de excluir o comerciante.'
-            : 'Erro ao remover comerciante.'
-        )
-      } finally {
-        setRemovendo(null)
-      }
+    let confirmado
+    if (temDados) {
+      const linhas = ['Este comerciante possui dados vinculados que também serão excluídos:']
+      if (dados.lojas > 0) linhas.push(`• ${dados.lojas} loja(s)`)
+      if (dados.avaliacoes > 0) linhas.push(`• ${dados.avaliacoes} avaliação(ões)`)
+      if (dados.denuncias > 0) linhas.push(`• ${dados.denuncias} denúncia(s)`)
+      linhas.push('\nDeseja excluir o comerciante e todos os dados vinculados?')
+      confirmado = window.confirm(linhas.join('\n'))
     } else {
-      if (!window.confirm('Remover este comerciante?')) return
-      setRemovendo(id)
-      setErro(null)
-      try {
+      confirmado = window.confirm('Remover este comerciante?')
+    }
+
+    if (!confirmado) return
+    setRemovendo(id)
+    try {
+      if (temDados) {
+        await deletarComercianteCascade(id)
+      } else {
         await deletarComerciante(id)
-        setComerciantes(prev => prev.filter(c => c.id_comerciante !== id))
-      } catch (e) {
-        setErro(e.message && !e.message.startsWith('HTTP') ? e.message : 'Erro ao remover comerciante.')
-      } finally {
-        setRemovendo(null)
       }
+      setComerciantes(prev => prev.filter(c => c.id_comerciante !== id))
+    } catch (e) {
+      setErro('Erro ao remover comerciante.')
+    } finally {
+      setRemovendo(null)
     }
   }
 

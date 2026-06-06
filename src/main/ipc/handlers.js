@@ -10,6 +10,7 @@ function registerHandlers(win) {
   ipcMain.handle('auth:salvar-token', (_e, token, nome) => {
     database.set('admin_token', token)
     database.set('admin_nome', nome)
+    database.set('admin_token_saved_at', Date.now().toString())
   })
 
   ipcMain.handle('auth:get-token', () => database.get('admin_token'))
@@ -18,6 +19,7 @@ function registerHandlers(win) {
   ipcMain.handle('auth:limpar-token', () => {
     database.set('admin_token', null)
     database.set('admin_nome', null)
+    database.set('admin_token_saved_at', null)
   })
 
   // ── DB: Lojas ─────────────────────────────────────────────────────────────
@@ -72,6 +74,24 @@ function registerHandlers(win) {
 
   ipcMain.handle('db:listar-consumidores', () => database.listarConsumidores())
 
+  ipcMain.handle('db:verificar-dados-consumidor', (_e, id) => database.verificarDadosConsumidor(id))
+
+  ipcMain.handle('db:deletar-consumidor-cascade', async (_e, id) => {
+    const { avaliacoes, denuncias } = database.getDadosConsumidor(id)
+    for (const aId of avaliacoes) {
+      database.marcarAvaliacaoExcluida(aId)
+      database.addPendingOp('avaliacao', aId, 'delete', null)
+    }
+    for (const dId of denuncias) {
+      database.removerDenuncia(dId)
+    }
+    database.marcarConsumidorExcluido(id)
+    database.addPendingOp('consumidor', id, 'delete', null)
+    if (connectivityService.isOnline()) {
+      syncService.syncCompleto(win).catch(() => {})
+    }
+  })
+
   ipcMain.handle('db:deletar-consumidor', async (_e, id) => {
     if (connectivityService.isOnline()) {
       const token = database.get('admin_token')
@@ -93,6 +113,8 @@ function registerHandlers(win) {
   // ── DB: Comerciantes ──────────────────────────────────────────────────────
 
   ipcMain.handle('db:listar-comerciantes', () => database.listarComerciantes())
+
+  ipcMain.handle('db:verificar-dados-comerciante', (_e, id) => database.verificarDadosComerciante(id))
 
   ipcMain.handle('db:deletar-comerciante', async (_e, id) => {
     if (connectivityService.isOnline()) {
@@ -117,6 +139,17 @@ function registerHandlers(win) {
 
     // Soft-delete local imediato e permanente — upsert do pull não restaura registros com deleted_locally=1
     for (const loja of lojas) {
+      // Avaliações vinculadas à loja
+      const avalIds = database.listarAvaliacoesPorLoja(loja.id)
+      for (const { id: aId } of avalIds) {
+        database.marcarAvaliacaoExcluida(aId)
+        database.addPendingOp('avaliacao', aId, 'delete', null)
+      }
+      // Denúncias vinculadas à loja (hard-delete — sem pending_op, backend não mantém estado)
+      const denIds = database.getDenunciasPorLoja(loja.id)
+      for (const dId of denIds) {
+        database.removerDenuncia(dId)
+      }
       database.marcarLojaExcluida(loja.id)
       database.addPendingOp('loja', loja.id, 'delete', null)
     }

@@ -174,7 +174,8 @@ CREATE TABLE IF NOT EXISTS denuncias (
   status_denuncia  TEXT,
   data_denuncia    TEXT,
   synced_at        TEXT,
-  dirty            INTEGER DEFAULT 0
+  dirty            INTEGER DEFAULT 0,
+  deleted_locally  INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS avaliacoes (
@@ -249,6 +250,19 @@ function _runMigrations() {
     try { db.prepare('ALTER TABLE lojas ADD COLUMN deleted_locally INTEGER DEFAULT 0').run() } catch (_) {}
     db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (1)').run()
     console.log('[database] Migration v1: lojas.deleted_locally')
+  }
+  if (v < 2) {
+    try { db.prepare('ALTER TABLE denuncias ADD COLUMN deleted_locally INTEGER DEFAULT 0').run() } catch (_) {}
+    db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (2)').run()
+    console.log('[database] Migration v2: denuncias.deleted_locally')
+  }
+  // v2 usava try/catch que podia marcar a migração como feita sem criar a coluna.
+  // v3 verifica via PRAGMA antes de inserir, garantindo idempotência real.
+  const hasDenunciaDeletedLocally = db.prepare("PRAGMA table_info(denuncias)").all().some(r => r.name === 'deleted_locally')
+  if (!hasDenunciaDeletedLocally) {
+    db.prepare('ALTER TABLE denuncias ADD COLUMN deleted_locally INTEGER DEFAULT 0').run()
+    db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (3)').run()
+    console.log('[database] Migration v3: denuncias.deleted_locally (correção)')
   }
 }
 
@@ -326,7 +340,11 @@ function marcarLojaSync(id) {
 // ─── Denuncias ─────────────────────────────────────────────────────────────
 
 function listarDenuncias() {
-  return db.prepare('SELECT * FROM denuncias ORDER BY data_denuncia DESC').all().map(rowToDenuncia)
+  return db.prepare('SELECT * FROM denuncias WHERE deleted_locally = 0 ORDER BY data_denuncia DESC').all().map(rowToDenuncia)
+}
+
+function listarTodasDenuncias() {
+  return db.prepare('SELECT id, dirty FROM denuncias').all()
 }
 
 function upsertDenuncia(denuncia) {
@@ -335,14 +353,15 @@ function upsertDenuncia(denuncia) {
     INSERT INTO denuncias (id, loja_id, loja_nome, consumidor_id, consumidor_nome, descricao, status_denuncia, data_denuncia, synced_at, dirty)
     VALUES (@id, @loja_id, @loja_nome, @consumidor_id, @consumidor_nome, @descricao, @status_denuncia, @data_denuncia, @synced_at, 0)
     ON CONFLICT(id) DO UPDATE SET
-      loja_id         = CASE WHEN dirty = 1 THEN loja_id         ELSE excluded.loja_id         END,
-      loja_nome       = CASE WHEN dirty = 1 THEN loja_nome       ELSE excluded.loja_nome       END,
-      consumidor_id   = CASE WHEN dirty = 1 THEN consumidor_id   ELSE excluded.consumidor_id   END,
-      consumidor_nome = CASE WHEN dirty = 1 THEN consumidor_nome ELSE excluded.consumidor_nome END,
-      descricao       = CASE WHEN dirty = 1 THEN descricao       ELSE excluded.descricao       END,
-      status_denuncia = CASE WHEN dirty = 1 THEN status_denuncia ELSE excluded.status_denuncia END,
-      data_denuncia   = CASE WHEN dirty = 1 THEN data_denuncia   ELSE excluded.data_denuncia   END,
-      synced_at       = CASE WHEN dirty = 1 THEN synced_at       ELSE excluded.synced_at       END
+      loja_id         = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN loja_id         ELSE excluded.loja_id         END,
+      loja_nome       = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN loja_nome       ELSE excluded.loja_nome       END,
+      consumidor_id   = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN consumidor_id   ELSE excluded.consumidor_id   END,
+      consumidor_nome = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN consumidor_nome ELSE excluded.consumidor_nome END,
+      descricao       = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN descricao       ELSE excluded.descricao       END,
+      status_denuncia = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN status_denuncia ELSE excluded.status_denuncia END,
+      data_denuncia   = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN data_denuncia   ELSE excluded.data_denuncia   END,
+      synced_at       = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN synced_at       ELSE excluded.synced_at       END,
+      deleted_locally = CASE WHEN deleted_locally = 1 THEN 1 ELSE 0 END
   `).run(row)
 }
 
@@ -366,6 +385,14 @@ function atualizarDenuncia(id, data) {
 
 function marcarDenunciaSync(id) {
   db.prepare('UPDATE denuncias SET dirty = 0 WHERE id = ?').run(id)
+}
+
+function marcarDenunciaExcluida(id) {
+  db.prepare('UPDATE denuncias SET deleted_locally = 1 WHERE id = ?').run(id)
+}
+
+function removerDenuncia(id) {
+  db.prepare('DELETE FROM denuncias WHERE id = ?').run(id)
 }
 
 // ─── Avaliacoes ────────────────────────────────────────────────────────────
@@ -495,6 +522,37 @@ function incrementPendingOpRetry(id, errorMsg) {
   db.prepare('UPDATE pending_ops SET retries = retries + 1, last_error = ? WHERE id = ?').run(errorMsg, id)
 }
 
+// ─── Cascade helpers ───────────────────────────────────────────────────────
+
+// Retorna { avaliacoes: number, denuncias: number } para um consumidor
+function verificarDadosConsumidor(consumidorId) {
+  const avaliacoes = db.prepare('SELECT COUNT(*) as n FROM avaliacoes WHERE consumidor_id = ? AND deleted_locally = 0').get(consumidorId)?.n ?? 0
+  const denuncias  = db.prepare('SELECT COUNT(*) as n FROM denuncias  WHERE consumidor_id = ? AND deleted_locally = 0').get(consumidorId)?.n ?? 0
+  return { avaliacoes, denuncias }
+}
+
+// Retorna ids de avaliacoes e denuncias vinculadas ao consumidor
+function getDadosConsumidor(consumidorId) {
+  const avaliacoes = db.prepare('SELECT id FROM avaliacoes WHERE consumidor_id = ? AND deleted_locally = 0').all(consumidorId).map(r => r.id)
+  const denuncias  = db.prepare('SELECT id FROM denuncias  WHERE consumidor_id = ? AND deleted_locally = 0').all(consumidorId).map(r => r.id)
+  return { avaliacoes, denuncias }
+}
+
+// Retorna ids de denuncias vinculadas a uma loja
+function getDenunciasPorLoja(lojaId) {
+  return db.prepare('SELECT id FROM denuncias WHERE loja_id = ? AND deleted_locally = 0').all(lojaId).map(r => r.id)
+}
+
+// Retorna { lojas: number, avaliacoes: number, denuncias: number } para um comerciante
+function verificarDadosComerciante(comercianteId) {
+  const lojaIds = db.prepare('SELECT id FROM lojas WHERE comerciante_id = ? AND deleted_locally = 0').all(comercianteId).map(r => r.id)
+  if (lojaIds.length === 0) return { lojas: 0, avaliacoes: 0, denuncias: 0 }
+  const placeholders = lojaIds.map(() => '?').join(',')
+  const avaliacoes = db.prepare(`SELECT COUNT(*) as n FROM avaliacoes WHERE loja_id IN (${placeholders}) AND deleted_locally = 0`).get(...lojaIds)?.n ?? 0
+  const denuncias  = db.prepare(`SELECT COUNT(*) as n FROM denuncias  WHERE loja_id IN (${placeholders}) AND deleted_locally = 0`).get(...lojaIds)?.n ?? 0
+  return { lojas: lojaIds.length, avaliacoes, denuncias }
+}
+
 // ─── Dashboard Stats ───────────────────────────────────────────────────────
 
 function getDashboardStats() {
@@ -502,9 +560,9 @@ function getDashboardStats() {
   const lojasAtivas = db.prepare("SELECT COUNT(*) as c FROM lojas WHERE status_loja = 'ATIVA' AND deleted_locally = 0").get().c
   const totalConsumidores = db.prepare('SELECT COUNT(*) as c FROM consumidores WHERE deleted_locally = 0').get().c
   const totalComerciantes = db.prepare('SELECT COUNT(*) as c FROM comerciantes WHERE deleted_locally = 0').get().c
-  const denunciasPendentes = db.prepare("SELECT COUNT(*) as c FROM denuncias WHERE status_denuncia = 'PENDENTE'").get().c
+  const denunciasPendentes = db.prepare("SELECT COUNT(*) as c FROM denuncias WHERE status_denuncia = 'PENDENTE' AND deleted_locally = 0").get().c
   const totalAvaliacoes = db.prepare('SELECT COUNT(*) as c FROM avaliacoes WHERE deleted_locally = 0').get().c
-  const denunciasRecentes = db.prepare('SELECT * FROM denuncias ORDER BY data_denuncia DESC LIMIT 5').all().map(rowToDenuncia)
+  const denunciasRecentes = db.prepare('SELECT * FROM denuncias WHERE deleted_locally = 0 ORDER BY data_denuncia DESC LIMIT 5').all().map(rowToDenuncia)
 
   return { totalLojas, lojasAtivas, totalConsumidores, totalComerciantes, denunciasPendentes, totalAvaliacoes, denunciasRecentes }
 }
@@ -516,11 +574,13 @@ module.exports = {
   get,
   set,
   listarLojas, upsertLoja, atualizarLoja, marcarLojaSync, marcarLojaExcluida,
-  listarDenuncias, upsertDenuncia, atualizarDenuncia, marcarDenunciaSync,
+  listarDenuncias, listarTodasDenuncias, upsertDenuncia, atualizarDenuncia, marcarDenunciaSync, marcarDenunciaExcluida, removerDenuncia,
   listarAvaliacoes, listarAvaliacoesPorLoja, upsertAvaliacao, marcarAvaliacaoExcluida, removerAvaliacao,
   listarConsumidores, upsertConsumidor, marcarConsumidorExcluido, removerConsumidor,
   listarComerciantes, upsertComerciante, marcarComercianteExcluido, removerComerciante,
   listarLojasDoComerciante, removerLoja,
   addPendingOp, getPendingOps, removePendingOp, incrementPendingOpRetry,
   getDashboardStats,
+  verificarDadosConsumidor, getDadosConsumidor,
+  getDenunciasPorLoja, verificarDadosComerciante,
 }
