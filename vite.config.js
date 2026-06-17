@@ -8,6 +8,7 @@ export default defineConfig({
     outDir: '../../dist/renderer',
   },
   server: {
-    port: 3000,
+    port: 5173,
+    strictPort: true,
   },
 })

@@ -30,6 +30,10 @@ export default function Avaliacoes() {
       }
     }
     carregar()
+    const cleanup = window.electronAPI?.sync.onSyncStatus((status) => {
+      if (status.estado === 'idle') carregar()
+    })
+    return () => cleanup?.()
   }, [])
 
   async function handleRemover(id) {
@@ -89,7 +93,6 @@ export default function Avaliacoes() {
                   <th>Nota</th>
                   <th>Comentário</th>
                   <th>Data</th>
-                  <th>Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -107,15 +110,6 @@ export default function Avaliacoes() {
                       </td>
                       <td style={{ maxWidth: 260 }}>{comentario || <span style={{ color: 'var(--text-muted)' }}>Sem comentário</span>}</td>
                       <td>{a.dataAvaliacao ? new Date(a.dataAvaliacao).toLocaleDateString('pt-BR') : '—'}</td>
-                      <td>
-                        <button
-                          className="btn-danger"
-                          disabled={removendo === a.id}
-                          onClick={() => handleRemover(a.id)}
-                        >
-                          {removendo === a.id ? 'Removendo...' : 'Remover'}
-                        </button>
-                      </td>
                     </tr>
                   )
                 })}

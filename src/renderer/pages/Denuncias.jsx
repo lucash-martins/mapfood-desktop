@@ -47,6 +47,10 @@ export default function Denuncias() {
       }
     }
     carregar()
+    const cleanup = window.electronAPI?.sync.onSyncStatus((status) => {
+      if (status.estado === 'idle') carregar()
+    })
+    return () => cleanup?.()
   }, [])
 
   async function handleAvancar(denuncia) {

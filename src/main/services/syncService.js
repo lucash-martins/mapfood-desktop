@@ -121,6 +121,14 @@ async function pushPendingOps(token) {
           if (op.entity === 'loja') database.marcarLojaSync(op.entity_id)
           if (op.entity === 'denuncia') database.marcarDenunciaSync(op.entity_id)
         }
+        // Para deletes com erro permanente: remove o registro local para não ficar preso
+        // com deleted_locally=1 indefinidamente (o pullAll vai restaurar se o servidor ainda tiver)
+        if (op.operation === 'delete') {
+          if (op.entity === 'consumidor') database.removerConsumidor(op.entity_id)
+          if (op.entity === 'comerciante') database.removerComerciante(op.entity_id)
+          if (op.entity === 'avaliacao') database.removerAvaliacao(op.entity_id)
+          if (op.entity === 'loja') database.removerLoja(op.entity_id)
+        }
         database.removePendingOp(op.id)
       } else {
         database.incrementPendingOpRetry(op.id, err.message)
@@ -161,7 +169,13 @@ async function pullAll(token) {
     try {
       const { body } = await httpRequest('GET', path, null, token)
       const items = Array.isArray(body) ? body : (body?.content ?? [])
-      for (const item of items) upsert(item)
+      for (const item of items) {
+        try {
+          upsert(item)
+        } catch (err) {
+          console.error(`[sync] upsert ${path}#${item.id ?? item.id_comerciante} falhou:`, err.message)
+        }
+      }
       if (reconcile) reconcile(new Set(items.map(i => i.id)))
     } catch (err) {
       console.warn(`[sync] Pull ${path} falhou:`, err.message)

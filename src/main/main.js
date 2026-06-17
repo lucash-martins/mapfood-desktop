@@ -32,24 +32,29 @@ function createWindow() {
   })
 
   if (process.env.ELECTRON_ENV === 'development') {
-    win.loadURL('http://localhost:3000')
+    win.loadURL(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173')
     win.webContents.openDevTools()
   } else {
     win.loadFile(path.join(__dirname, '../../dist/renderer/index.html'))
   }
 }
 
-app.whenReady().then(() => {
-  database.initialize()
-  createWindow()
-  registerHandlers(win)
-  connectivityService.start(win)
-  syncService.start(win)
+app.whenReady()
+  .then(() => {
+    database.initialize()
+    createWindow()
+    registerHandlers(win)
+    connectivityService.start(win)
+    syncService.start(win)
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
   })
-})
+  .catch((error) => {
+    console.error('[main] Failed to start application:', error)
+    app.quit()
+  })
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

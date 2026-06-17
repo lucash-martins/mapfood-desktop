@@ -340,7 +340,24 @@ function marcarLojaSync(id) {
 // ─── Denuncias ─────────────────────────────────────────────────────────────
 
 function listarDenuncias() {
-  return db.prepare('SELECT * FROM denuncias WHERE deleted_locally = 0 ORDER BY data_denuncia DESC').all().map(rowToDenuncia)
+  return db.prepare(`
+    SELECT
+      d.id,
+      d.loja_id,
+      COALESCE(d.loja_nome, l.nome) AS loja_nome,
+      d.consumidor_id,
+      d.consumidor_nome,
+      d.descricao,
+      d.status_denuncia,
+      d.data_denuncia,
+      d.synced_at,
+      d.dirty,
+      d.deleted_locally
+    FROM denuncias d
+    LEFT JOIN lojas l ON d.loja_id = l.id AND l.deleted_locally = 0
+    WHERE d.deleted_locally = 0
+    ORDER BY d.data_denuncia DESC
+  `).all().map(rowToDenuncia)
 }
 
 function listarTodasDenuncias() {
@@ -353,15 +370,15 @@ function upsertDenuncia(denuncia) {
     INSERT INTO denuncias (id, loja_id, loja_nome, consumidor_id, consumidor_nome, descricao, status_denuncia, data_denuncia, synced_at, dirty)
     VALUES (@id, @loja_id, @loja_nome, @consumidor_id, @consumidor_nome, @descricao, @status_denuncia, @data_denuncia, @synced_at, 0)
     ON CONFLICT(id) DO UPDATE SET
-      loja_id         = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN loja_id         ELSE excluded.loja_id         END,
-      loja_nome       = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN loja_nome       ELSE excluded.loja_nome       END,
-      consumidor_id   = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN consumidor_id   ELSE excluded.consumidor_id   END,
-      consumidor_nome = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN consumidor_nome ELSE excluded.consumidor_nome END,
-      descricao       = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN descricao       ELSE excluded.descricao       END,
-      status_denuncia = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN status_denuncia ELSE excluded.status_denuncia END,
-      data_denuncia   = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN data_denuncia   ELSE excluded.data_denuncia   END,
-      synced_at       = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN synced_at       ELSE excluded.synced_at       END,
-      deleted_locally = CASE WHEN deleted_locally = 1 THEN 1 ELSE 0 END
+      loja_id         = CASE WHEN dirty = 1 THEN loja_id         ELSE excluded.loja_id         END,
+      loja_nome       = CASE WHEN dirty = 1 THEN loja_nome       ELSE excluded.loja_nome       END,
+      consumidor_id   = CASE WHEN dirty = 1 THEN consumidor_id   ELSE excluded.consumidor_id   END,
+      consumidor_nome = CASE WHEN dirty = 1 THEN consumidor_nome ELSE excluded.consumidor_nome END,
+      descricao       = CASE WHEN dirty = 1 THEN descricao       ELSE excluded.descricao       END,
+      status_denuncia = CASE WHEN dirty = 1 THEN status_denuncia ELSE excluded.status_denuncia END,
+      data_denuncia   = CASE WHEN dirty = 1 THEN data_denuncia   ELSE excluded.data_denuncia   END,
+      synced_at       = CASE WHEN dirty = 1 THEN synced_at       ELSE excluded.synced_at       END,
+      deleted_locally = 0
   `).run(row)
 }
 
@@ -398,7 +415,23 @@ function removerDenuncia(id) {
 // ─── Avaliacoes ────────────────────────────────────────────────────────────
 
 function listarAvaliacoes() {
-  return db.prepare('SELECT * FROM avaliacoes WHERE deleted_locally = 0 ORDER BY data_avaliacao DESC').all().map(rowToAvaliacao)
+  return db.prepare(`
+    SELECT
+      a.id,
+      a.loja_id,
+      COALESCE(a.loja_nome, l.nome) AS loja_nome,
+      a.consumidor_id,
+      a.consumidor_nome,
+      a.nota,
+      a.comentario,
+      a.data_avaliacao,
+      a.synced_at,
+      a.deleted_locally
+    FROM avaliacoes a
+    LEFT JOIN lojas l ON a.loja_id = l.id AND l.deleted_locally = 0
+    WHERE a.deleted_locally = 0
+    ORDER BY a.data_avaliacao DESC
+  `).all().map(rowToAvaliacao)
 }
 
 function upsertAvaliacao(avaliacao) {
@@ -407,14 +440,15 @@ function upsertAvaliacao(avaliacao) {
     INSERT INTO avaliacoes (id, loja_id, loja_nome, consumidor_id, consumidor_nome, nota, comentario, data_avaliacao, synced_at, deleted_locally)
     VALUES (@id, @loja_id, @loja_nome, @consumidor_id, @consumidor_nome, @nota, @comentario, @data_avaliacao, @synced_at, 0)
     ON CONFLICT(id) DO UPDATE SET
-      loja_id         = CASE WHEN deleted_locally = 1 THEN loja_id         ELSE excluded.loja_id         END,
-      loja_nome       = CASE WHEN deleted_locally = 1 THEN loja_nome       ELSE excluded.loja_nome       END,
-      consumidor_id   = CASE WHEN deleted_locally = 1 THEN consumidor_id   ELSE excluded.consumidor_id   END,
-      consumidor_nome = CASE WHEN deleted_locally = 1 THEN consumidor_nome ELSE excluded.consumidor_nome END,
-      nota            = CASE WHEN deleted_locally = 1 THEN nota            ELSE excluded.nota            END,
-      comentario      = CASE WHEN deleted_locally = 1 THEN comentario      ELSE excluded.comentario      END,
-      data_avaliacao  = CASE WHEN deleted_locally = 1 THEN data_avaliacao  ELSE excluded.data_avaliacao  END,
-      synced_at       = CASE WHEN deleted_locally = 1 THEN synced_at       ELSE excluded.synced_at       END
+      loja_id         = excluded.loja_id,
+      loja_nome       = excluded.loja_nome,
+      consumidor_id   = excluded.consumidor_id,
+      consumidor_nome = excluded.consumidor_nome,
+      nota            = excluded.nota,
+      comentario      = excluded.comentario,
+      data_avaliacao  = excluded.data_avaliacao,
+      synced_at       = excluded.synced_at,
+      deleted_locally = 0
   `).run(row)
 }
 
@@ -478,7 +512,7 @@ function upsertComerciante(comerciante) {
       nome            = excluded.nome,
       email           = excluded.email,
       synced_at       = excluded.synced_at,
-      deleted_locally = CASE WHEN deleted_locally = 1 THEN 1 ELSE 0 END
+      deleted_locally = 0
   `).run(row)
 }
 

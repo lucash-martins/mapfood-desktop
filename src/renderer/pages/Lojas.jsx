@@ -29,6 +29,10 @@ export default function Lojas() {
       }
     }
     carregar()
+    const cleanup = window.electronAPI?.sync.onSyncStatus((status) => {
+      if (status.estado === 'idle') carregar()
+    })
+    return () => cleanup?.()
   }, [])
 
   async function handleMudarStatus(loja, novoStatus) {

@@ -4,10 +4,11 @@
   "main": "src/main/main.js",
   "scripts": {
     "start": "npm run electron:dev",
-    "dev": "vite",
+    "dev": "vite --port 3000 --strictPort",
     "build": "vite build",
     "electron": "electron .",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:3000 && cross-env ELECTRON_ENV=development electron .\"",
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "electron:dev": "concurrently \"vite --port 3000 --strictPort\" \"wait-on http://localhost:3000 && cross-env ELECTRON_ENV=development ELECTRON_RENDERER_URL=http://localhost:3000 electron .\"",
     "preview": "vite preview"
   },
   "dependencies": {
