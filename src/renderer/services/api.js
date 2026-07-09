@@ -1,5 +1,12 @@
 const BASE_URL = 'http://localhost:8080'
 
+// Imagens vêm do backend como caminho relativo (ex: "/uploads/lojas/xxx.jpg")
+export function resolveImagemUrl(path) {
+  if (!path) return null
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  return `${BASE_URL}${path}`
+}
+
 // apiFetch é usado apenas pelo loginAdmin (precisa de rede)
 async function apiFetch(path, options = {}) {
   const headers = {
@@ -46,6 +53,9 @@ export async function atualizarDenuncia(id, data) {
 export async function listarAvaliacoes() {
   return window.electronAPI?.db.listarAvaliacoes()
 }
+export async function atualizarAvaliacao(id, data) {
+  return window.electronAPI?.db.atualizarAvaliacao(id, data)
+}
 export async function deletarAvaliacao(id) {
   return window.electronAPI?.db.deletarAvaliacao(id)
 }
@@ -62,6 +72,9 @@ export async function atualizarLoja(id, data) {
 export async function listarConsumidores() {
   return window.electronAPI?.db.listarConsumidores()
 }
+export async function atualizarConsumidor(id, data) {
+  return window.electronAPI?.db.atualizarConsumidor(id, data)
+}
 export async function deletarConsumidor(id) {
   return window.electronAPI?.db.deletarConsumidor(id)
 }
@@ -76,6 +89,9 @@ export async function verificarDadosConsumidor(id) {
 export async function listarComerciantes() {
   return window.electronAPI?.db.listarComerciantes()
 }
+export async function atualizarComerciante(id, data) {
+  return window.electronAPI?.db.atualizarComerciante(id, data)
+}
 export async function deletarComerciante(id) {
   return window.electronAPI?.db.deletarComerciante(id)
 }
@@ -84,4 +100,12 @@ export async function deletarComercianteCascade(id) {
 }
 export async function verificarDadosComerciante(id) {
   return window.electronAPI?.db.verificarDadosComerciante(id)
+}
+export async function atualizarComercianteDashboard(id, enabled) {
+  return window.electronAPI?.db.atualizarComercianteDashboard(id, enabled)
+}
+
+// Relatorios — via IPC
+export async function getRelatorioStats() {
+  return window.electronAPI?.db.getRelatorioStats()
 }

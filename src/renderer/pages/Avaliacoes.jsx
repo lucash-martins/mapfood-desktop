@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { listarAvaliacoes, deletarAvaliacao } from '../services/api'
+import { listarAvaliacoes, atualizarAvaliacao, deletarAvaliacao } from '../services/api'
+import EditModal from '../components/EditModal'
+import Icon from '../components/Icon'
 
 function renderEstrelas(nota) {
   const n = Number(nota) || 0
@@ -14,6 +16,7 @@ export default function Avaliacoes() {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState(null)
   const [removendo, setRemovendo] = useState(null)
+  const [editando, setEditando] = useState(null)
 
   useEffect(() => {
     async function carregar() {
@@ -47,6 +50,15 @@ export default function Avaliacoes() {
     } finally {
       setRemovendo(null)
     }
+  }
+
+  async function handleSalvarEdicao(avaliacao, valores) {
+    const nota = Number(valores.nota)
+    await atualizarAvaliacao(avaliacao.id, { nota, comentario: valores.comentario })
+    setAvaliacoes(prev =>
+      prev.map(a => a.id === avaliacao.id ? { ...a, nota, comentario: valores.comentario } : a)
+    )
+    setEditando(null)
   }
 
   const avaliacoesFiltradas = filtroNota === 'Todas'
@@ -93,6 +105,7 @@ export default function Avaliacoes() {
                   <th>Nota</th>
                   <th>Comentário</th>
                   <th>Data</th>
+                  <th>Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -110,6 +123,25 @@ export default function Avaliacoes() {
                       </td>
                       <td style={{ maxWidth: 260 }}>{comentario || <span style={{ color: 'var(--text-muted)' }}>Sem comentário</span>}</td>
                       <td>{a.dataAvaliacao ? new Date(a.dataAvaliacao).toLocaleDateString('pt-BR') : '—'}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <button
+                            className="btn-icon btn-secondary"
+                            title="Editar"
+                            onClick={() => setEditando(a)}
+                          >
+                            <Icon name="edit" />
+                          </button>
+                          <button
+                            className="btn-icon btn-danger"
+                            title="Remover"
+                            disabled={removendo === a.id}
+                            onClick={() => handleRemover(a.id)}
+                          >
+                            <Icon name="trash" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   )
                 })}
@@ -118,6 +150,19 @@ export default function Avaliacoes() {
           </div>
         )}
       </div>
+
+      {editando && (
+        <EditModal
+          title={`Editar avaliação #${editando.id}`}
+          fields={[
+            { name: 'nota', label: 'Nota', type: 'select', options: [1, 2, 3, 4, 5] },
+            { name: 'comentario', label: 'Comentário', type: 'textarea', rows: 5 },
+          ]}
+          initialValues={editando}
+          onSave={(valores) => handleSalvarEdicao(editando, valores)}
+          onClose={() => setEditando(null)}
+        />
+      )}
     </div>
   )
 }

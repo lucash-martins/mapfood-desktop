@@ -6,6 +6,7 @@ import Denuncias from './pages/Denuncias'
 import Avaliacoes from './pages/Avaliacoes'
 import Lojas from './pages/Lojas'
 import Usuarios from './pages/Usuarios'
+import Relatorios from './pages/Relatorios'
 import Layout from './components/Layout'
 
 function PrivateRoute() {
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/avaliacoes" element={<Avaliacoes />} />
         <Route path="/lojas" element={<Lojas />} />
         <Route path="/usuarios" element={<Usuarios />} />
+        <Route path="/relatorios" element={<Relatorios />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

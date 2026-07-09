@@ -64,7 +64,7 @@ function buildLojaPayload(p) {
   return {
     nome: p.nome ?? null,
     descricao: p.descricao ?? null,
-    statusLoja: p.statusLoja === 'SUSPENSA' ? 'INATIVA' : (p.statusLoja ?? null),
+    statusLoja: p.statusLoja ?? null,
     dataCadastro: p.dataCadastro ?? null,
   }
 }
@@ -77,6 +77,46 @@ function buildDenunciaPayload(p) {
   }
 }
 
+function buildAvaliacaoPayload(p) {
+  return {
+    nota: p.nota ?? null,
+    comentario: p.comentario ?? null,
+  }
+}
+
+function buildConsumidorPayload(p) {
+  return {
+    nome: p.nome ?? null,
+    email: p.email ?? null,
+    cpf: p.cpf ?? null,
+    celular: p.celular ?? null,
+    imagemUrl: p.imagemUrl ?? null,
+  }
+}
+
+// PUT /comerciantes/{id} substitui o registro inteiro no backend — reenvia todos os
+// campos cacheados (não só os editáveis na UI) para não apagar cpf/celular/telefone/cnpj.
+function buildComercianteProfilePayload(p) {
+  return {
+    nome: p.nome ?? null,
+    email: p.email ?? null,
+    cpf: p.cpf ?? null,
+    celular: p.celular ?? null,
+    telefone: p.telefone ?? null,
+    cnpj: p.cnpj ?? null,
+    dashboardEnabled: !!p.dashboardEnabled,
+    imagemUrl: p.imagemUrl ?? null,
+  }
+}
+
+function marcarOpSync(entity, entityId) {
+  if (entity === 'loja') database.marcarLojaSync(entityId)
+  if (entity === 'denuncia') database.marcarDenunciaSync(entityId)
+  if (entity === 'avaliacao') database.marcarAvaliacaoSync(entityId)
+  if (entity === 'consumidor') database.marcarConsumidorSync(entityId)
+  if (entity === 'comerciante') database.marcarComercianteSync(entityId)
+}
+
 async function pushPendingOps(token) {
   const ops = database.getPendingOps()
   for (const op of ops) {
@@ -84,14 +124,28 @@ async function pushPendingOps(token) {
       if (op.operation === 'update') {
         let apiPath = null
         let payload = null
+        const method = 'PUT'
         if (op.entity === 'loja') {
           apiPath = `/lojas/${op.entity_id}`
           payload = buildLojaPayload(op.payload)
         } else if (op.entity === 'denuncia') {
           apiPath = `/denuncias/${op.entity_id}`
           payload = buildDenunciaPayload(op.payload)
+        } else if (op.entity === 'avaliacao') {
+          apiPath = `/avaliacoes/${op.entity_id}`
+          payload = buildAvaliacaoPayload(op.payload)
+        } else if (op.entity === 'consumidor') {
+          apiPath = `/consumidores/${op.entity_id}`
+          payload = buildConsumidorPayload(op.payload)
+        } else if (op.entity === 'comerciante') {
+          apiPath = `/comerciantes/${op.entity_id}`
+          payload = buildComercianteProfilePayload(op.payload)
         }
-        if (apiPath) await httpRequest('PUT', apiPath, payload, token)
+        if (apiPath) await httpRequest(method, apiPath, payload, token)
+      } else if (op.operation === 'update_dashboard') {
+        if (op.entity === 'comerciante') {
+          await httpRequest('PATCH', `/comerciantes/${op.entity_id}/dashboard`, { dashboardEnabled: !!op.payload.dashboardEnabled }, token)
+        }
       } else if (op.operation === 'delete') {
         const pathMap = {
           avaliacao: `/avaliacoes/${op.entity_id}`,
@@ -102,9 +156,8 @@ async function pushPendingOps(token) {
         const apiPath = pathMap[op.entity]
         if (apiPath) await httpRequest('DELETE', apiPath, null, token)
       }
-      if (op.operation === 'update') {
-        if (op.entity === 'loja') database.marcarLojaSync(op.entity_id)
-        if (op.entity === 'denuncia') database.marcarDenunciaSync(op.entity_id)
+      if (op.operation === 'update' || op.operation === 'update_dashboard') {
+        marcarOpSync(op.entity, op.entity_id)
       }
       database.removePendingOp(op.id)
       if (op.operation === 'delete') {
@@ -117,9 +170,8 @@ async function pushPendingOps(token) {
       console.error(`[sync] Push ${op.entity}#${op.entity_id} falhou:`, err.status, err.message)
       if (err.status && err.status >= 400 && err.status < 500) {
         console.warn(`[sync] Descartando op ${op.id} (${op.entity}#${op.entity_id}): erro permanente ${err.status}`)
-        if (op.operation === 'update') {
-          if (op.entity === 'loja') database.marcarLojaSync(op.entity_id)
-          if (op.entity === 'denuncia') database.marcarDenunciaSync(op.entity_id)
+        if (op.operation === 'update' || op.operation === 'update_dashboard') {
+          marcarOpSync(op.entity, op.entity_id)
         }
         // Para deletes com erro permanente: remove o registro local para não ficar preso
         // com deleted_locally=1 indefinidamente (o pullAll vai restaurar se o servidor ainda tiver)

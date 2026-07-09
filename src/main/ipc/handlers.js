@@ -52,6 +52,15 @@ function registerHandlers(win) {
 
   ipcMain.handle('db:listar-avaliacoes', () => database.listarAvaliacoes())
 
+  ipcMain.handle('db:atualizar-avaliacao', async (_e, id, data) => {
+    const avaliacao = database.atualizarAvaliacao(id, data)
+    database.addPendingOp('avaliacao', id, 'update', avaliacao)
+    if (connectivityService.isOnline()) {
+      syncService.syncCompleto(win).catch(() => {})
+    }
+    return avaliacao
+  })
+
   ipcMain.handle('db:deletar-avaliacao', async (_e, id) => {
     if (connectivityService.isOnline()) {
       const token = database.get('admin_token')
@@ -73,6 +82,15 @@ function registerHandlers(win) {
   // ── DB: Consumidores ──────────────────────────────────────────────────────
 
   ipcMain.handle('db:listar-consumidores', () => database.listarConsumidores())
+
+  ipcMain.handle('db:atualizar-consumidor', async (_e, id, data) => {
+    const consumidor = database.atualizarConsumidor(id, data)
+    database.addPendingOp('consumidor', id, 'update', consumidor)
+    if (connectivityService.isOnline()) {
+      syncService.syncCompleto(win).catch(() => {})
+    }
+    return consumidor
+  })
 
   ipcMain.handle('db:verificar-dados-consumidor', (_e, id) => database.verificarDadosConsumidor(id))
 
@@ -134,6 +152,24 @@ function registerHandlers(win) {
     database.addPendingOp('comerciante', id, 'delete', null)
   })
 
+  ipcMain.handle('db:atualizar-comerciante-dashboard', async (_e, id, enabled) => {
+    const comerciante = database.atualizarComercianteDashboard(id, enabled)
+    database.addPendingOp('comerciante', id, 'update_dashboard', { dashboardEnabled: enabled })
+    if (connectivityService.isOnline()) {
+      syncService.syncCompleto(win).catch(() => {})
+    }
+    return comerciante
+  })
+
+  ipcMain.handle('db:atualizar-comerciante', async (_e, id, data) => {
+    const comerciante = database.atualizarComerciante(id, data)
+    database.addPendingOp('comerciante', id, 'update', comerciante)
+    if (connectivityService.isOnline()) {
+      syncService.syncCompleto(win).catch(() => {})
+    }
+    return comerciante
+  })
+
   ipcMain.handle('db:deletar-comerciante-cascade', async (_e, id) => {
     const lojas = database.listarLojasDoComerciante(id)
 
@@ -165,6 +201,7 @@ function registerHandlers(win) {
   // ── DB: Dashboard ─────────────────────────────────────────────────────────
 
   ipcMain.handle('db:get-dashboard-stats', () => database.getDashboardStats())
+  ipcMain.handle('db:get-relatorio-stats', () => database.getRelatorioStats())
 
   // ── Sync ──────────────────────────────────────────────────────────────────
 

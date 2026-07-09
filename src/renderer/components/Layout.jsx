@@ -32,7 +32,9 @@ export default function Layout() {
           <NavLink to="/avaliacoes">⭐ Avaliações</NavLink>
           <NavLink to="/lojas">🏪 Lojas</NavLink>
           <NavLink to="/usuarios">👥 Usuários</NavLink>
+          <NavLink to="/relatorios">📈 Relatórios</NavLink>
         </nav>
+        <StatusBar />
         <div className="sidebar-footer">
           <span className="sidebar-user">{nome}</span>
           <button className="logout-btn" onClick={logout}>Sair</button>
@@ -41,7 +43,6 @@ export default function Layout() {
       <main className="content">
         <Outlet />
       </main>
-      <StatusBar />
     </div>
   )
 }

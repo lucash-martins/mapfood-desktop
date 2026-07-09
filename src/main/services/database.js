@@ -16,6 +16,16 @@ function normalizarData(val) {
   return String(val)
 }
 
+function parseGaleria(val) {
+  if (!val) return []
+  try {
+    const parsed = JSON.parse(val)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 function lojaToRow(loja) {
   return {
     id: loja.id,
@@ -26,6 +36,8 @@ function lojaToRow(loja) {
     // Comerciante.getId_comerciante() → JSON key é 'id_comerciante' (snake_case)
     comerciante_id: loja.comerciante?.id_comerciante ?? loja.comerciante?.id ?? loja.comercianteId ?? null,
     comerciante_nome: loja.comerciante?.nome ?? loja.comercianteNome ?? null,
+    imagem_url: loja.imagemUrl ?? null,
+    galeria: Array.isArray(loja.galeria) ? JSON.stringify(loja.galeria) : null,
     synced_at: new Date().toISOString(),
   }
 }
@@ -42,6 +54,8 @@ function rowToLoja(row) {
     comerciante: row.comerciante_id
       ? { id: row.comerciante_id, id_comerciante: row.comerciante_id, nome: row.comerciante_nome }
       : null,
+    imagemUrl: row.imagem_url,
+    galeria: parseGaleria(row.galeria),
     syncedAt: row.synced_at,
     dirty: !!row.dirty,
   }
@@ -98,6 +112,7 @@ function rowToAvaliacao(row) {
     comentario: row.comentario,
     dataAvaliacao: row.data_avaliacao,
     syncedAt: row.synced_at,
+    dirty: !!row.dirty,
   }
 }
 
@@ -108,6 +123,7 @@ function consumidorToRow(c) {
     email: c.email ?? null,
     cpf: c.cpf ?? null,
     celular: c.celular ?? null,
+    imagem_url: c.imagemUrl ?? null,
     synced_at: new Date().toISOString(),
   }
 }
@@ -119,7 +135,9 @@ function rowToConsumidor(row) {
     email: row.email,
     cpf: row.cpf,
     celular: row.celular,
+    imagemUrl: row.imagem_url,
     syncedAt: row.synced_at,
+    dirty: !!row.dirty,
   }
 }
 
@@ -129,6 +147,12 @@ function comercianteToRow(c) {
     id_comerciante: c.id_comerciante ?? c.idComerciante ?? c.idUsuario ?? c.id ?? null,
     nome: c.nome ?? null,
     email: c.email ?? null,
+    cpf: c.cpf ?? null,
+    celular: c.celular ?? null,
+    telefone: c.telefone ?? null,
+    cnpj: c.cnpj ?? null,
+    dashboard_enabled: c.dashboardEnabled ? 1 : 0,
+    imagem_url: c.imagemUrl ?? null,
     synced_at: new Date().toISOString(),
   }
 }
@@ -140,7 +164,14 @@ function rowToComerciante(row) {
     idComerciante: row.id_comerciante,
     nome: row.nome,
     email: row.email,
+    cpf: row.cpf,
+    celular: row.celular,
+    telefone: row.telefone,
+    cnpj: row.cnpj,
+    dashboardEnabled: !!row.dashboard_enabled,
+    imagemUrl: row.imagem_url,
     syncedAt: row.synced_at,
+    dirty: !!row.dirty,
   }
 }
 
@@ -160,6 +191,8 @@ CREATE TABLE IF NOT EXISTS lojas (
   data_cadastro    TEXT,
   comerciante_id   INTEGER,
   comerciante_nome TEXT,
+  imagem_url       TEXT,
+  galeria          TEXT,
   synced_at        TEXT,
   dirty            INTEGER DEFAULT 0
 );
@@ -197,6 +230,7 @@ CREATE TABLE IF NOT EXISTS consumidores (
   email            TEXT,
   cpf              TEXT,
   celular          TEXT,
+  imagem_url       TEXT,
   synced_at        TEXT,
   deleted_locally  INTEGER DEFAULT 0
 );
@@ -205,7 +239,10 @@ CREATE TABLE IF NOT EXISTS comerciantes (
   id_comerciante   INTEGER PRIMARY KEY,
   nome             TEXT,
   email            TEXT,
+  dashboard_enabled INTEGER DEFAULT 0,
+  imagem_url       TEXT,
   synced_at        TEXT,
+  dirty            INTEGER DEFAULT 0,
   deleted_locally  INTEGER DEFAULT 0
 );
 
@@ -264,6 +301,79 @@ function _runMigrations() {
     db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (3)').run()
     console.log('[database] Migration v3: denuncias.deleted_locally (correção)')
   }
+
+  const comerciantesCols = db.prepare("PRAGMA table_info(comerciantes)").all().map(r => r.name)
+  if (!comerciantesCols.includes('dashboard_enabled')) {
+    db.prepare('ALTER TABLE comerciantes ADD COLUMN dashboard_enabled INTEGER DEFAULT 0').run()
+    console.log('[database] Migration v4: comerciantes.dashboard_enabled')
+  }
+  if (!comerciantesCols.includes('dirty')) {
+    db.prepare('ALTER TABLE comerciantes ADD COLUMN dirty INTEGER DEFAULT 0').run()
+    console.log('[database] Migration v4: comerciantes.dirty')
+  }
+  if (!comerciantesCols.includes('dashboard_enabled') || !comerciantesCols.includes('dirty')) {
+    db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (4)').run()
+  }
+
+  const lojasCols = db.prepare("PRAGMA table_info(lojas)").all().map(r => r.name)
+  if (!lojasCols.includes('imagem_url')) {
+    db.prepare('ALTER TABLE lojas ADD COLUMN imagem_url TEXT').run()
+    console.log('[database] Migration v5: lojas.imagem_url')
+  }
+  const consumidoresCols = db.prepare("PRAGMA table_info(consumidores)").all().map(r => r.name)
+  if (!consumidoresCols.includes('imagem_url')) {
+    db.prepare('ALTER TABLE consumidores ADD COLUMN imagem_url TEXT').run()
+    console.log('[database] Migration v5: consumidores.imagem_url')
+  }
+  if (!comerciantesCols.includes('imagem_url')) {
+    db.prepare('ALTER TABLE comerciantes ADD COLUMN imagem_url TEXT').run()
+    console.log('[database] Migration v5: comerciantes.imagem_url')
+  }
+  if (!lojasCols.includes('imagem_url') || !consumidoresCols.includes('imagem_url') || !comerciantesCols.includes('imagem_url')) {
+    db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (5)').run()
+  }
+
+  if (!lojasCols.includes('galeria')) {
+    db.prepare('ALTER TABLE lojas ADD COLUMN galeria TEXT').run()
+    db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (6)').run()
+    console.log('[database] Migration v6: lojas.galeria')
+  }
+
+  const avaliacoesCols = db.prepare("PRAGMA table_info(avaliacoes)").all().map(r => r.name)
+  let v7Aplicada = false
+  if (!avaliacoesCols.includes('dirty')) {
+    db.prepare('ALTER TABLE avaliacoes ADD COLUMN dirty INTEGER DEFAULT 0').run()
+    console.log('[database] Migration v7: avaliacoes.dirty')
+    v7Aplicada = true
+  }
+  if (!consumidoresCols.includes('dirty')) {
+    db.prepare('ALTER TABLE consumidores ADD COLUMN dirty INTEGER DEFAULT 0').run()
+    console.log('[database] Migration v7: consumidores.dirty')
+    v7Aplicada = true
+  }
+  if (!comerciantesCols.includes('cpf')) {
+    db.prepare('ALTER TABLE comerciantes ADD COLUMN cpf TEXT').run()
+    console.log('[database] Migration v7: comerciantes.cpf')
+    v7Aplicada = true
+  }
+  if (!comerciantesCols.includes('celular')) {
+    db.prepare('ALTER TABLE comerciantes ADD COLUMN celular TEXT').run()
+    console.log('[database] Migration v7: comerciantes.celular')
+    v7Aplicada = true
+  }
+  if (!comerciantesCols.includes('telefone')) {
+    db.prepare('ALTER TABLE comerciantes ADD COLUMN telefone TEXT').run()
+    console.log('[database] Migration v7: comerciantes.telefone')
+    v7Aplicada = true
+  }
+  if (!comerciantesCols.includes('cnpj')) {
+    db.prepare('ALTER TABLE comerciantes ADD COLUMN cnpj TEXT').run()
+    console.log('[database] Migration v7: comerciantes.cnpj')
+    v7Aplicada = true
+  }
+  if (v7Aplicada) {
+    db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (7)').run()
+  }
 }
 
 function _limparDuplicatas() {
@@ -297,8 +407,8 @@ function listarLojas() {
 function upsertLoja(loja) {
   const row = lojaToRow(loja)
   db.prepare(`
-    INSERT INTO lojas (id, nome, descricao, status_loja, data_cadastro, comerciante_id, comerciante_nome, synced_at, dirty)
-    VALUES (@id, @nome, @descricao, @status_loja, @data_cadastro, @comerciante_id, @comerciante_nome, @synced_at, 0)
+    INSERT INTO lojas (id, nome, descricao, status_loja, data_cadastro, comerciante_id, comerciante_nome, imagem_url, galeria, synced_at, dirty)
+    VALUES (@id, @nome, @descricao, @status_loja, @data_cadastro, @comerciante_id, @comerciante_nome, @imagem_url, @galeria, @synced_at, 0)
     ON CONFLICT(id) DO UPDATE SET
       nome             = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN nome             ELSE excluded.nome             END,
       descricao        = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN descricao        ELSE excluded.descricao        END,
@@ -306,6 +416,8 @@ function upsertLoja(loja) {
       data_cadastro    = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN data_cadastro    ELSE excluded.data_cadastro    END,
       comerciante_id   = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN comerciante_id   ELSE excluded.comerciante_id   END,
       comerciante_nome = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN comerciante_nome ELSE excluded.comerciante_nome END,
+      imagem_url       = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN imagem_url       ELSE excluded.imagem_url       END,
+      galeria          = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN galeria          ELSE excluded.galeria          END,
       synced_at        = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN synced_at        ELSE excluded.synced_at        END,
       deleted_locally  = CASE WHEN deleted_locally = 1 THEN 1 ELSE 0 END
   `).run(row)
@@ -437,19 +549,38 @@ function listarAvaliacoes() {
 function upsertAvaliacao(avaliacao) {
   const row = avaliacaoToRow(avaliacao)
   db.prepare(`
-    INSERT INTO avaliacoes (id, loja_id, loja_nome, consumidor_id, consumidor_nome, nota, comentario, data_avaliacao, synced_at, deleted_locally)
-    VALUES (@id, @loja_id, @loja_nome, @consumidor_id, @consumidor_nome, @nota, @comentario, @data_avaliacao, @synced_at, 0)
+    INSERT INTO avaliacoes (id, loja_id, loja_nome, consumidor_id, consumidor_nome, nota, comentario, data_avaliacao, synced_at, dirty, deleted_locally)
+    VALUES (@id, @loja_id, @loja_nome, @consumidor_id, @consumidor_nome, @nota, @comentario, @data_avaliacao, @synced_at, 0, 0)
     ON CONFLICT(id) DO UPDATE SET
-      loja_id         = excluded.loja_id,
-      loja_nome       = excluded.loja_nome,
-      consumidor_id   = excluded.consumidor_id,
-      consumidor_nome = excluded.consumidor_nome,
-      nota            = excluded.nota,
-      comentario      = excluded.comentario,
-      data_avaliacao  = excluded.data_avaliacao,
-      synced_at       = excluded.synced_at,
+      loja_id         = CASE WHEN dirty = 1 THEN loja_id         ELSE excluded.loja_id         END,
+      loja_nome       = CASE WHEN dirty = 1 THEN loja_nome       ELSE excluded.loja_nome       END,
+      consumidor_id   = CASE WHEN dirty = 1 THEN consumidor_id   ELSE excluded.consumidor_id   END,
+      consumidor_nome = CASE WHEN dirty = 1 THEN consumidor_nome ELSE excluded.consumidor_nome END,
+      nota            = CASE WHEN dirty = 1 THEN nota            ELSE excluded.nota            END,
+      comentario      = CASE WHEN dirty = 1 THEN comentario      ELSE excluded.comentario      END,
+      data_avaliacao  = CASE WHEN dirty = 1 THEN data_avaliacao  ELSE excluded.data_avaliacao  END,
+      synced_at       = CASE WHEN dirty = 1 THEN synced_at       ELSE excluded.synced_at       END,
       deleted_locally = 0
   `).run(row)
+}
+
+function atualizarAvaliacao(id, data) {
+  const existing = db.prepare('SELECT * FROM avaliacoes WHERE id = ?').get(id)
+  if (!existing) throw new Error(`Avaliacao ${id} nao encontrada`)
+  const merged = {
+    ...avaliacaoToRow({ ...rowToAvaliacao(existing), ...data }),
+    dirty: 1,
+    id,
+  }
+  db.prepare(`
+    UPDATE avaliacoes SET nota=@nota, comentario=@comentario, dirty=@dirty
+    WHERE id=@id
+  `).run(merged)
+  return rowToAvaliacao(db.prepare('SELECT * FROM avaliacoes WHERE id = ?').get(id))
+}
+
+function marcarAvaliacaoSync(id) {
+  db.prepare('UPDATE avaliacoes SET dirty = 0 WHERE id = ?').run(id)
 }
 
 function listarAvaliacoesPorLoja(lojaId) {
@@ -473,16 +604,36 @@ function listarConsumidores() {
 function upsertConsumidor(consumidor) {
   const row = consumidorToRow(consumidor)
   db.prepare(`
-    INSERT INTO consumidores (id, nome, email, cpf, celular, synced_at, deleted_locally)
-    VALUES (@id, @nome, @email, @cpf, @celular, @synced_at, 0)
+    INSERT INTO consumidores (id, nome, email, cpf, celular, imagem_url, synced_at, dirty, deleted_locally)
+    VALUES (@id, @nome, @email, @cpf, @celular, @imagem_url, @synced_at, 0, 0)
     ON CONFLICT(id) DO UPDATE SET
-      nome            = excluded.nome,
-      email           = excluded.email,
-      cpf             = excluded.cpf,
-      celular         = excluded.celular,
-      synced_at       = excluded.synced_at,
+      nome            = CASE WHEN dirty = 1 THEN nome            ELSE excluded.nome            END,
+      email           = CASE WHEN dirty = 1 THEN email           ELSE excluded.email           END,
+      cpf             = CASE WHEN dirty = 1 THEN cpf             ELSE excluded.cpf             END,
+      celular         = CASE WHEN dirty = 1 THEN celular         ELSE excluded.celular         END,
+      imagem_url      = CASE WHEN dirty = 1 THEN imagem_url      ELSE excluded.imagem_url      END,
+      synced_at       = CASE WHEN dirty = 1 THEN synced_at       ELSE excluded.synced_at       END,
       deleted_locally = 0
   `).run(row)
+}
+
+function atualizarConsumidor(id, data) {
+  const existing = db.prepare('SELECT * FROM consumidores WHERE id = ?').get(id)
+  if (!existing) throw new Error(`Consumidor ${id} nao encontrado`)
+  const merged = {
+    ...consumidorToRow({ ...rowToConsumidor(existing), ...data }),
+    dirty: 1,
+    id,
+  }
+  db.prepare(`
+    UPDATE consumidores SET nome=@nome, email=@email, cpf=@cpf, celular=@celular, dirty=@dirty
+    WHERE id=@id
+  `).run(merged)
+  return rowToConsumidor(db.prepare('SELECT * FROM consumidores WHERE id = ?').get(id))
+}
+
+function marcarConsumidorSync(id) {
+  db.prepare('UPDATE consumidores SET dirty = 0 WHERE id = ?').run(id)
 }
 
 function marcarConsumidorExcluido(id) {
@@ -506,13 +657,19 @@ function upsertComerciante(comerciante) {
     return
   }
   db.prepare(`
-    INSERT INTO comerciantes (id_comerciante, nome, email, synced_at, deleted_locally)
-    VALUES (@id_comerciante, @nome, @email, @synced_at, 0)
+    INSERT INTO comerciantes (id_comerciante, nome, email, cpf, celular, telefone, cnpj, dashboard_enabled, imagem_url, synced_at, dirty, deleted_locally)
+    VALUES (@id_comerciante, @nome, @email, @cpf, @celular, @telefone, @cnpj, @dashboard_enabled, @imagem_url, @synced_at, 0, 0)
     ON CONFLICT(id_comerciante) DO UPDATE SET
-      nome            = excluded.nome,
-      email           = excluded.email,
-      synced_at       = excluded.synced_at,
-      deleted_locally = 0
+      nome              = CASE WHEN dirty = 1 THEN nome              ELSE excluded.nome              END,
+      email             = CASE WHEN dirty = 1 THEN email             ELSE excluded.email             END,
+      cpf               = CASE WHEN dirty = 1 THEN cpf               ELSE excluded.cpf               END,
+      celular           = CASE WHEN dirty = 1 THEN celular           ELSE excluded.celular           END,
+      telefone          = CASE WHEN dirty = 1 THEN telefone          ELSE excluded.telefone          END,
+      cnpj              = CASE WHEN dirty = 1 THEN cnpj              ELSE excluded.cnpj              END,
+      dashboard_enabled = CASE WHEN dirty = 1 THEN dashboard_enabled ELSE excluded.dashboard_enabled END,
+      imagem_url        = CASE WHEN dirty = 1 THEN imagem_url        ELSE excluded.imagem_url        END,
+      synced_at         = CASE WHEN dirty = 1 THEN synced_at         ELSE excluded.synced_at         END,
+      deleted_locally   = 0
   `).run(row)
 }
 
@@ -522,6 +679,33 @@ function marcarComercianteExcluido(id) {
 
 function removerComerciante(id) {
   db.prepare('DELETE FROM comerciantes WHERE id_comerciante = ?').run(id)
+}
+
+function atualizarComerciante(id, data) {
+  const existing = db.prepare('SELECT * FROM comerciantes WHERE id_comerciante = ?').get(id)
+  if (!existing) throw new Error(`Comerciante ${id} nao encontrado`)
+  const merged = {
+    ...comercianteToRow({ ...rowToComerciante(existing), ...data }),
+    dirty: 1,
+    id_comerciante: id,
+  }
+  db.prepare(`
+    UPDATE comerciantes SET
+      nome=@nome, email=@email, cpf=@cpf, celular=@celular, telefone=@telefone, cnpj=@cnpj, dirty=@dirty
+    WHERE id_comerciante=@id_comerciante
+  `).run(merged)
+  return rowToComerciante(db.prepare('SELECT * FROM comerciantes WHERE id_comerciante = ?').get(id))
+}
+
+function atualizarComercianteDashboard(id, enabled) {
+  const existing = db.prepare('SELECT * FROM comerciantes WHERE id_comerciante = ?').get(id)
+  if (!existing) throw new Error(`Comerciante ${id} nao encontrado`)
+  db.prepare('UPDATE comerciantes SET dashboard_enabled = ?, dirty = 1 WHERE id_comerciante = ?').run(enabled ? 1 : 0, id)
+  return rowToComerciante(db.prepare('SELECT * FROM comerciantes WHERE id_comerciante = ?').get(id))
+}
+
+function marcarComercianteSync(id) {
+  db.prepare('UPDATE comerciantes SET dirty = 0 WHERE id_comerciante = ?').run(id)
 }
 
 function listarLojasDoComerciante(comercianteId) {
@@ -601,6 +785,79 @@ function getDashboardStats() {
   return { totalLojas, lojasAtivas, totalConsumidores, totalComerciantes, denunciasPendentes, totalAvaliacoes, denunciasRecentes }
 }
 
+// ─── Relatorios ────────────────────────────────────────────────────────────
+
+function getRelatorioStats() {
+  const totalLojas = db.prepare('SELECT COUNT(*) as c FROM lojas WHERE deleted_locally = 0').get().c
+  const totalConsumidores = db.prepare('SELECT COUNT(*) as c FROM consumidores WHERE deleted_locally = 0').get().c
+  const totalComerciantes = db.prepare('SELECT COUNT(*) as c FROM comerciantes WHERE deleted_locally = 0').get().c
+  const totalAvaliacoes = db.prepare('SELECT COUNT(*) as c FROM avaliacoes WHERE deleted_locally = 0').get().c
+  const totalDenuncias = db.prepare('SELECT COUNT(*) as c FROM denuncias WHERE deleted_locally = 0').get().c
+  const denunciasPendentes = db.prepare("SELECT COUNT(*) as c FROM denuncias WHERE status_denuncia = 'PENDENTE' AND deleted_locally = 0").get().c
+  const notaMedia = db.prepare('SELECT AVG(nota) as m FROM avaliacoes WHERE deleted_locally = 0').get().m
+
+  const lojasPorStatus = db.prepare(`
+    SELECT COALESCE(status_loja, 'DESCONHECIDO') as status, COUNT(*) as total
+    FROM lojas WHERE deleted_locally = 0
+    GROUP BY status
+  `).all()
+
+  const distribuicaoNotas = db.prepare(`
+    SELECT nota, COUNT(*) as total
+    FROM avaliacoes WHERE deleted_locally = 0 AND nota IS NOT NULL
+    GROUP BY nota
+    ORDER BY nota
+  `).all()
+
+  const denunciasPorStatus = db.prepare(`
+    SELECT COALESCE(status_denuncia, 'DESCONHECIDO') as status, COUNT(*) as total
+    FROM denuncias WHERE deleted_locally = 0
+    GROUP BY status
+  `).all()
+
+  const avaliacoesPorMes = db.prepare(`
+    SELECT substr(data_avaliacao, 1, 7) as mes, AVG(nota) as media, COUNT(*) as total
+    FROM avaliacoes
+    WHERE deleted_locally = 0 AND data_avaliacao IS NOT NULL
+    GROUP BY mes
+    ORDER BY mes DESC
+    LIMIT 12
+  `).all().reverse()
+
+  // Uma linha por loja com suas métricas agregadas, para a tabela de detalhamento.
+  // Subqueries correlacionadas (em vez de JOIN) evitam o efeito cascata do produto
+  // cartesiano entre avaliacoes e denuncias de uma mesma loja.
+  const lojasDetalhe = db.prepare(`
+    SELECT
+      l.id,
+      l.nome,
+      l.status_loja,
+      l.comerciante_nome,
+      (SELECT COUNT(*) FROM avaliacoes a WHERE a.loja_id = l.id AND a.deleted_locally = 0) as total_avaliacoes,
+      (SELECT AVG(nota) FROM avaliacoes a WHERE a.loja_id = l.id AND a.deleted_locally = 0) as media_nota,
+      (SELECT COUNT(*) FROM denuncias d WHERE d.loja_id = l.id AND d.deleted_locally = 0) as total_denuncias,
+      (SELECT COUNT(*) FROM denuncias d WHERE d.loja_id = l.id AND d.deleted_locally = 0 AND d.status_denuncia = 'PENDENTE') as denuncias_pendentes
+    FROM lojas l
+    WHERE l.deleted_locally = 0
+    ORDER BY l.nome
+  `).all()
+
+  return {
+    totalLojas,
+    totalConsumidores,
+    totalComerciantes,
+    totalAvaliacoes,
+    totalDenuncias,
+    denunciasPendentes,
+    notaMedia: notaMedia || 0,
+    lojasPorStatus,
+    distribuicaoNotas,
+    denunciasPorStatus,
+    avaliacoesPorMes,
+    lojasDetalhe,
+  }
+}
+
 // ─── Exports ───────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -609,12 +866,14 @@ module.exports = {
   set,
   listarLojas, upsertLoja, atualizarLoja, marcarLojaSync, marcarLojaExcluida,
   listarDenuncias, listarTodasDenuncias, upsertDenuncia, atualizarDenuncia, marcarDenunciaSync, marcarDenunciaExcluida, removerDenuncia,
-  listarAvaliacoes, listarAvaliacoesPorLoja, upsertAvaliacao, marcarAvaliacaoExcluida, removerAvaliacao,
-  listarConsumidores, upsertConsumidor, marcarConsumidorExcluido, removerConsumidor,
+  listarAvaliacoes, listarAvaliacoesPorLoja, upsertAvaliacao, atualizarAvaliacao, marcarAvaliacaoSync, marcarAvaliacaoExcluida, removerAvaliacao,
+  listarConsumidores, upsertConsumidor, atualizarConsumidor, marcarConsumidorSync, marcarConsumidorExcluido, removerConsumidor,
   listarComerciantes, upsertComerciante, marcarComercianteExcluido, removerComerciante,
+  atualizarComerciante, atualizarComercianteDashboard, marcarComercianteSync,
   listarLojasDoComerciante, removerLoja,
   addPendingOp, getPendingOps, removePendingOp, incrementPendingOpRetry,
   getDashboardStats,
+  getRelatorioStats,
   verificarDadosConsumidor, getDadosConsumidor,
   getDenunciasPorLoja, verificarDadosComerciante,
 }

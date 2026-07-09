@@ -1,5 +1,16 @@
 import React, { useState, useEffect } from 'react'
-import { listarConsumidores, listarComerciantes, deletarConsumidor, deletarConsumidorCascade, verificarDadosConsumidor, deletarComerciante, deletarComercianteCascade, verificarDadosComerciante } from '../services/api'
+import { listarConsumidores, listarComerciantes, atualizarConsumidor, deletarConsumidor, deletarConsumidorCascade, verificarDadosConsumidor, atualizarComerciante, deletarComerciante, deletarComercianteCascade, verificarDadosComerciante, atualizarComercianteDashboard, resolveImagemUrl } from '../services/api'
+import EditModal from '../components/EditModal'
+import Icon from '../components/Icon'
+
+function Avatar({ src, nome }) {
+  const [erro, setErro] = useState(false)
+  const url = resolveImagemUrl(src)
+  if (!url || erro) {
+    return <div className="avatar-placeholder">{(nome || '?').trim().charAt(0).toUpperCase()}</div>
+  }
+  return <img className="avatar" src={url} alt={nome || ''} onError={() => setErro(true)} />
+}
 
 const tabStyle = (ativo) => ({
   padding: '0.5rem 1.25rem',
@@ -23,6 +34,9 @@ export default function Usuarios() {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState(null)
   const [removendo, setRemovendo] = useState(null)
+  const [alterandoDashboard, setAlterandoDashboard] = useState(null)
+  const [editandoConsumidor, setEditandoConsumidor] = useState(null)
+  const [editandoComerciante, setEditandoComerciante] = useState(null)
   const [tick, setTick] = useState(0)
 
   useEffect(() => {
@@ -124,6 +138,37 @@ export default function Usuarios() {
     }
   }
 
+  async function handleToggleDashboard(id, novoEstado) {
+    setErro(null)
+    setAlterandoDashboard(id)
+    try {
+      await atualizarComercianteDashboard(id, novoEstado)
+      setComerciantes(prev =>
+        prev.map(c => c.id_comerciante === id ? { ...c, dashboardEnabled: novoEstado } : c)
+      )
+    } catch (e) {
+      setErro('Erro ao alterar permissão de dashboard.')
+    } finally {
+      setAlterandoDashboard(null)
+    }
+  }
+
+  async function handleSalvarConsumidor(consumidor, valores) {
+    await atualizarConsumidor(consumidor.id, valores)
+    setConsumidores(prev =>
+      prev.map(c => c.id === consumidor.id ? { ...c, ...valores } : c)
+    )
+    setEditandoConsumidor(null)
+  }
+
+  async function handleSalvarComerciante(comerciante, valores) {
+    await atualizarComerciante(comerciante.id_comerciante, valores)
+    setComerciantes(prev =>
+      prev.map(c => c.id_comerciante === comerciante.id_comerciante ? { ...c, ...valores } : c)
+    )
+    setEditandoComerciante(null)
+  }
+
   const consumidoresFiltrados = consumidores.filter(c =>
     !buscaConsumidor.trim() || c.nome?.toLowerCase().includes(buscaConsumidor.trim().toLowerCase())
   )
@@ -171,6 +216,7 @@ export default function Usuarios() {
                 <table>
                   <thead>
                     <tr>
+                      <th>Foto</th>
                       <th>ID</th>
                       <th>Nome</th>
                       <th>Email</th>
@@ -182,19 +228,30 @@ export default function Usuarios() {
                   <tbody>
                     {consumidoresFiltrados.map(c => (
                       <tr key={c.id}>
+                        <td><Avatar src={c.imagemUrl} nome={c.nome} /></td>
                         <td>#{c.id}</td>
                         <td>{c.nome || '—'}</td>
                         <td>{c.email || '—'}</td>
                         <td>{c.cpf || '—'}</td>
                         <td>{c.celular || '—'}</td>
                         <td>
-                          <button
-                            className="btn-danger"
-                            disabled={removendo === c.id}
-                            onClick={() => handleRemoverConsumidor(c.id)}
-                          >
-                            {removendo === c.id ? 'Removendo...' : 'Remover'}
-                          </button>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <button
+                              className="btn-icon btn-secondary"
+                              title="Editar"
+                              onClick={() => setEditandoConsumidor(c)}
+                            >
+                              <Icon name="edit" />
+                            </button>
+                            <button
+                              className="btn-icon btn-danger"
+                              title="Remover"
+                              disabled={removendo === c.id}
+                              onClick={() => handleRemoverConsumidor(c.id)}
+                            >
+                              <Icon name="trash" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -222,26 +279,63 @@ export default function Usuarios() {
                 <table>
                   <thead>
                     <tr>
+                      <th>Foto</th>
                       <th>ID</th>
                       <th>Nome</th>
                       <th>Email</th>
+                      <th>Dashboard</th>
                       <th>Ações</th>
                     </tr>
                   </thead>
                   <tbody>
                     {comerciantesFiltrados.map(c => (
                       <tr key={c.id_comerciante}>
+                        <td><Avatar src={c.imagemUrl} nome={c.nome} /></td>
                         <td>#{c.id_comerciante}</td>
                         <td>{c.nome || '—'}</td>
                         <td>{c.email || '—'}</td>
                         <td>
-                          <button
-                            className="btn-danger"
-                            disabled={removendo === c.id_comerciante}
-                            onClick={() => handleRemoverComerciante(c.id_comerciante)}
-                          >
-                            {removendo === c.id_comerciante ? 'Removendo...' : 'Remover'}
-                          </button>
+                          <span className={c.dashboardEnabled ? 'badge badge-success' : 'badge badge-muted'}>
+                            {c.dashboardEnabled ? 'Liberado' : 'Bloqueado'}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <button
+                              className="btn-icon btn-secondary"
+                              title="Editar"
+                              onClick={() => setEditandoComerciante(c)}
+                            >
+                              <Icon name="edit" />
+                            </button>
+                            {c.dashboardEnabled ? (
+                              <button
+                                className="btn-icon btn-danger"
+                                title="Retirar acesso ao dashboard"
+                                disabled={alterandoDashboard === c.id_comerciante}
+                                onClick={() => handleToggleDashboard(c.id_comerciante, false)}
+                              >
+                                <Icon name="lock" />
+                              </button>
+                            ) : (
+                              <button
+                                className="btn-icon btn-secondary"
+                                title="Liberar acesso ao dashboard"
+                                disabled={alterandoDashboard === c.id_comerciante}
+                                onClick={() => handleToggleDashboard(c.id_comerciante, true)}
+                              >
+                                <Icon name="unlock" />
+                              </button>
+                            )}
+                            <button
+                              className="btn-icon btn-danger"
+                              title="Remover"
+                              disabled={removendo === c.id_comerciante}
+                              onClick={() => handleRemoverComerciante(c.id_comerciante)}
+                            >
+                              <Icon name="trash" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -251,6 +345,34 @@ export default function Usuarios() {
             )}
           </div>
         </>
+      )}
+
+      {editandoConsumidor && (
+        <EditModal
+          title={`Editar consumidor — ${editandoConsumidor.nome || '#' + editandoConsumidor.id}`}
+          fields={[
+            { name: 'nome', label: 'Nome' },
+            { name: 'email', label: 'Email', type: 'email' },
+            { name: 'cpf', label: 'CPF' },
+            { name: 'celular', label: 'Celular' },
+          ]}
+          initialValues={editandoConsumidor}
+          onSave={(valores) => handleSalvarConsumidor(editandoConsumidor, valores)}
+          onClose={() => setEditandoConsumidor(null)}
+        />
+      )}
+
+      {editandoComerciante && (
+        <EditModal
+          title={`Editar comerciante — ${editandoComerciante.nome || '#' + editandoComerciante.id_comerciante}`}
+          fields={[
+            { name: 'nome', label: 'Nome' },
+            { name: 'email', label: 'Email', type: 'email' },
+          ]}
+          initialValues={editandoComerciante}
+          onSave={(valores) => handleSalvarComerciante(editandoComerciante, valores)}
+          onClose={() => setEditandoComerciante(null)}
+        />
       )}
     </div>
   )
