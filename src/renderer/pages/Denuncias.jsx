@@ -12,8 +12,20 @@ const STATUS_LABEL = {
   ARQUIVADA: 'ARQUIVADA',
 }
 
+const MOTIVO_LABEL = {
+  CONTEUDO_INAPROPRIADO: 'Conteúdo inapropriado',
+  FRAUDE_OU_GOLPE: 'Fraude ou golpe',
+  INFORMACOES_FALSAS: 'Informações falsas',
+  SPAM: 'Spam',
+  OUTRO: 'Outro',
+}
+
 function statusLabel(status) {
   return STATUS_LABEL[status] ?? (status?.replace('_', ' ') ?? status)
+}
+
+function motivoLabel(motivo) {
+  return MOTIVO_LABEL[motivo] ?? (motivo?.replace(/_/g, ' ') ?? motivo)
 }
 
 function badgeClass(status) {
@@ -115,6 +127,7 @@ export default function Denuncias() {
                   <th>ID</th>
                   <th>Loja</th>
                   <th>Consumidor</th>
+                  <th>Categoria</th>
                   <th>Descrição</th>
                   <th>Status</th>
                   <th>Data</th>
@@ -133,6 +146,7 @@ export default function Denuncias() {
                       <td>#{d.id}</td>
                       <td>{d.loja?.nome || '—'}</td>
                       <td>{d.consumidor?.nome || '—'}</td>
+                      <td>{d.motivo ? motivoLabel(d.motivo) : '—'}</td>
                       <td style={{ maxWidth: 220 }}>{descricao || '—'}</td>
                       <td><span className={badgeClass(d.statusDenuncia)}>{statusLabel(d.statusDenuncia)}</span></td>
                       <td>{d.dataDenuncia ? new Date(d.dataDenuncia).toLocaleDateString('pt-BR') : '—'}</td>

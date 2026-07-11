@@ -1,7 +1,38 @@
 import React, { useState, useEffect } from 'react'
-import { listarConsumidores, listarComerciantes, atualizarConsumidor, deletarConsumidor, deletarConsumidorCascade, verificarDadosConsumidor, atualizarComerciante, deletarComerciante, deletarComercianteCascade, verificarDadosComerciante, atualizarComercianteDashboard, resolveImagemUrl } from '../services/api'
+import { listarConsumidores, listarComerciantes, atualizarConsumidor, deletarConsumidor, deletarConsumidorCascade, verificarDadosConsumidor, atualizarComerciante, deletarComerciante, deletarComercianteCascade, verificarDadosComerciante, atualizarComercianteDashboard, resolveImagemUrl, criarConsumidor, criarComerciante, listarAdministradores, criarAdministrador, atualizarAdministrador, deletarAdministrador, enviarImagemConsumidor, removerImagemConsumidor, enviarImagemComerciante, removerImagemComerciante } from '../services/api'
 import EditModal from '../components/EditModal'
+import EditarImagemModal from '../components/EditarImagemModal'
 import Icon from '../components/Icon'
+
+const CAMPOS_NOVO_CONSUMIDOR = [
+  { name: 'nome', label: 'Nome' },
+  { name: 'email', label: 'Email', type: 'email' },
+  { name: 'senha', label: 'Senha', type: 'password' },
+  { name: 'cpf', label: 'CPF' },
+  { name: 'celular', label: 'Celular' },
+]
+
+const CAMPOS_NOVO_COMERCIANTE = [
+  { name: 'nome', label: 'Nome' },
+  { name: 'email', label: 'Email', type: 'email' },
+  { name: 'senha', label: 'Senha', type: 'password' },
+  { name: 'cpf', label: 'CPF' },
+  { name: 'celular', label: 'Celular' },
+  { name: 'telefone', label: 'Telefone' },
+  { name: 'cnpj', label: 'CNPJ' },
+]
+
+const CAMPOS_NOVO_ADMIN = [
+  { name: 'nome', label: 'Nome' },
+  { name: 'email', label: 'Email', type: 'email' },
+  { name: 'senha', label: 'Senha', type: 'password' },
+]
+
+const CAMPOS_EDITAR_ADMIN = [
+  { name: 'nome', label: 'Nome' },
+  { name: 'email', label: 'Email', type: 'email' },
+  { name: 'senha', label: 'Senha (deixe em branco para manter a atual)', type: 'password' },
+]
 
 function Avatar({ src, nome }) {
   const [erro, setErro] = useState(false)
@@ -37,7 +68,18 @@ export default function Usuarios() {
   const [alterandoDashboard, setAlterandoDashboard] = useState(null)
   const [editandoConsumidor, setEditandoConsumidor] = useState(null)
   const [editandoComerciante, setEditandoComerciante] = useState(null)
+  const [editandoImagemConsumidor, setEditandoImagemConsumidor] = useState(null)
+  const [editandoImagemComerciante, setEditandoImagemComerciante] = useState(null)
+  const [criandoConsumidor, setCriandoConsumidor] = useState(false)
+  const [criandoComerciante, setCriandoComerciante] = useState(false)
+  const [criandoAdmin, setCriandoAdmin] = useState(false)
+  const [editandoAdmin, setEditandoAdmin] = useState(null)
   const [tick, setTick] = useState(0)
+
+  const [administradores, setAdministradores] = useState([])
+  const [carregandoAdmins, setCarregandoAdmins] = useState(false)
+  const [erroAdmins, setErroAdmins] = useState(null)
+  const [removendoAdmin, setRemovendoAdmin] = useState(null)
 
   useEffect(() => {
     async function carregar() {
@@ -70,6 +112,25 @@ export default function Usuarios() {
     })
     return () => cleanup?.()
   }, [])
+
+  useEffect(() => {
+    if (abaAtiva !== 'administradores') return
+    let cancelado = false
+    async function carregar() {
+      setCarregandoAdmins(true)
+      setErroAdmins(null)
+      try {
+        const data = await listarAdministradores()
+        if (!cancelado) setAdministradores(data || [])
+      } catch (e) {
+        if (!cancelado) setErroAdmins(e?.message || 'Erro ao carregar administradores.')
+      } finally {
+        if (!cancelado) setCarregandoAdmins(false)
+      }
+    }
+    carregar()
+    return () => { cancelado = true }
+  }, [abaAtiva])
 
   async function handleRemoverConsumidor(id) {
     setErro(null)
@@ -169,6 +230,72 @@ export default function Usuarios() {
     setEditandoComerciante(null)
   }
 
+  async function handleUploadImagemConsumidor(file) {
+    const atualizado = await enviarImagemConsumidor(editandoImagemConsumidor.id, file)
+    setConsumidores(prev => prev.map(c => c.id === editandoImagemConsumidor.id ? { ...c, imagemUrl: atualizado.imagemUrl } : c))
+    setEditandoImagemConsumidor(prev => prev ? { ...prev, imagemUrl: atualizado.imagemUrl } : prev)
+  }
+
+  async function handleRemoverImagemConsumidor() {
+    const atualizado = await removerImagemConsumidor(editandoImagemConsumidor.id)
+    setConsumidores(prev => prev.map(c => c.id === editandoImagemConsumidor.id ? { ...c, imagemUrl: atualizado.imagemUrl } : c))
+    setEditandoImagemConsumidor(prev => prev ? { ...prev, imagemUrl: atualizado.imagemUrl } : prev)
+  }
+
+  async function handleUploadImagemComerciante(file) {
+    const atualizado = await enviarImagemComerciante(editandoImagemComerciante.id_comerciante, file)
+    setComerciantes(prev => prev.map(c => c.id_comerciante === editandoImagemComerciante.id_comerciante ? { ...c, imagemUrl: atualizado.imagemUrl } : c))
+    setEditandoImagemComerciante(prev => prev ? { ...prev, imagemUrl: atualizado.imagemUrl } : prev)
+  }
+
+  async function handleRemoverImagemComerciante() {
+    const atualizado = await removerImagemComerciante(editandoImagemComerciante.id_comerciante)
+    setComerciantes(prev => prev.map(c => c.id_comerciante === editandoImagemComerciante.id_comerciante ? { ...c, imagemUrl: atualizado.imagemUrl } : c))
+    setEditandoImagemComerciante(prev => prev ? { ...prev, imagemUrl: atualizado.imagemUrl } : prev)
+  }
+
+  async function handleCriarConsumidor(valores) {
+    const criado = await criarConsumidor(valores)
+    setConsumidores(prev => [...prev, criado])
+    setCriandoConsumidor(false)
+  }
+
+  async function handleCriarComerciante(valores) {
+    const criado = await criarComerciante(valores)
+    setComerciantes(prev => [...prev, criado])
+    setCriandoComerciante(false)
+  }
+
+  async function handleCriarAdmin(valores) {
+    const criado = await criarAdministrador(valores)
+    setAdministradores(prev => [...prev, criado])
+    setCriandoAdmin(false)
+  }
+
+  async function handleSalvarAdmin(admin, valores) {
+    const payload = { nome: valores.nome, email: valores.email }
+    if (valores.senha) payload.senha = valores.senha
+    const atualizado = await atualizarAdministrador(admin.id, payload)
+    setAdministradores(prev =>
+      prev.map(a => a.id === admin.id ? { ...a, nome: atualizado.nome, email: atualizado.email } : a)
+    )
+    setEditandoAdmin(null)
+  }
+
+  async function handleRemoverAdmin(admin) {
+    if (!window.confirm(`Remover o administrador "${admin.nome}"?`)) return
+    setErroAdmins(null)
+    setRemovendoAdmin(admin.id)
+    try {
+      await deletarAdministrador(admin.id)
+      setAdministradores(prev => prev.filter(a => a.id !== admin.id))
+    } catch (e) {
+      setErroAdmins(e?.message || 'Erro ao remover administrador.')
+    } finally {
+      setRemovendoAdmin(null)
+    }
+  }
+
   const consumidoresFiltrados = consumidores.filter(c =>
     !buscaConsumidor.trim() || c.nome?.toLowerCase().includes(buscaConsumidor.trim().toLowerCase())
   )
@@ -179,8 +306,23 @@ export default function Usuarios() {
 
   return (
     <div className="page">
-      <div className="page-header">
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 className="page-title">Usuários</h1>
+        {abaAtiva === 'consumidores' && (
+          <button className="btn-primary" style={{ width: 'auto' }} onClick={() => setCriandoConsumidor(true)}>
+            + Novo consumidor
+          </button>
+        )}
+        {abaAtiva === 'comerciantes' && (
+          <button className="btn-primary" style={{ width: 'auto' }} onClick={() => setCriandoComerciante(true)}>
+            + Novo comerciante
+          </button>
+        )}
+        {abaAtiva === 'administradores' && (
+          <button className="btn-primary" style={{ width: 'auto' }} onClick={() => setCriandoAdmin(true)}>
+            + Novo administrador
+          </button>
+        )}
       </div>
 
       {erro && <div className="error-msg" style={{ marginBottom: '1rem' }}>{erro}</div>}
@@ -192,9 +334,64 @@ export default function Usuarios() {
         <button style={tabStyle(abaAtiva === 'comerciantes')} onClick={() => setAbaAtiva('comerciantes')}>
           Comerciantes
         </button>
+        <button style={tabStyle(abaAtiva === 'administradores')} onClick={() => setAbaAtiva('administradores')}>
+          Administradores
+        </button>
       </div>
 
-      {carregando ? (
+      {abaAtiva === 'administradores' ? (
+        <>
+          {erroAdmins && <div className="error-msg" style={{ marginBottom: '1rem' }}>{erroAdmins}</div>}
+          <div className="card" style={{ marginBottom: 0 }}>
+            {carregandoAdmins ? (
+              <p style={{ color: 'var(--text-muted)' }}>Carregando...</p>
+            ) : administradores.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)' }}>Nenhum administrador encontrado.</p>
+            ) : (
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Nome</th>
+                      <th>Email</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {administradores.map(a => (
+                      <tr key={a.id}>
+                        <td>#{a.id}</td>
+                        <td>{a.nome || '—'}</td>
+                        <td>{a.email || '—'}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <button
+                              className="btn-icon btn-secondary"
+                              title="Editar"
+                              onClick={() => setEditandoAdmin(a)}
+                            >
+                              <Icon name="edit" />
+                            </button>
+                            <button
+                              className="btn-icon btn-danger"
+                              title="Remover"
+                              disabled={removendoAdmin === a.id}
+                              onClick={() => handleRemoverAdmin(a)}
+                            >
+                              <Icon name="trash" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      ) : carregando ? (
         <div className="card">
           <p style={{ color: 'var(--text-muted)' }}>Carregando...</p>
         </div>
@@ -228,7 +425,18 @@ export default function Usuarios() {
                   <tbody>
                     {consumidoresFiltrados.map(c => (
                       <tr key={c.id}>
-                        <td><Avatar src={c.imagemUrl} nome={c.nome} /></td>
+                        <td>
+                          <div className="avatar-wrapper">
+                            <Avatar src={c.imagemUrl} nome={c.nome} />
+                            <button
+                              className="avatar-edit-btn"
+                              title="Editar imagem"
+                              onClick={() => setEditandoImagemConsumidor(c)}
+                            >
+                              <Icon name="edit" size={10} />
+                            </button>
+                          </div>
+                        </td>
                         <td>#{c.id}</td>
                         <td>{c.nome || '—'}</td>
                         <td>{c.email || '—'}</td>
@@ -283,6 +491,10 @@ export default function Usuarios() {
                       <th>ID</th>
                       <th>Nome</th>
                       <th>Email</th>
+                      <th>CPF</th>
+                      <th>Celular</th>
+                      <th>Telefone</th>
+                      <th>CNPJ</th>
                       <th>Dashboard</th>
                       <th>Ações</th>
                     </tr>
@@ -290,10 +502,25 @@ export default function Usuarios() {
                   <tbody>
                     {comerciantesFiltrados.map(c => (
                       <tr key={c.id_comerciante}>
-                        <td><Avatar src={c.imagemUrl} nome={c.nome} /></td>
+                        <td>
+                          <div className="avatar-wrapper">
+                            <Avatar src={c.imagemUrl} nome={c.nome} />
+                            <button
+                              className="avatar-edit-btn"
+                              title="Editar imagem"
+                              onClick={() => setEditandoImagemComerciante(c)}
+                            >
+                              <Icon name="edit" size={10} />
+                            </button>
+                          </div>
+                        </td>
                         <td>#{c.id_comerciante}</td>
                         <td>{c.nome || '—'}</td>
                         <td>{c.email || '—'}</td>
+                        <td>{c.cpf || '—'}</td>
+                        <td>{c.celular || '—'}</td>
+                        <td>{c.telefone || '—'}</td>
+                        <td>{c.cnpj || '—'}</td>
                         <td>
                           <span className={c.dashboardEnabled ? 'badge badge-success' : 'badge badge-muted'}>
                             {c.dashboardEnabled ? 'Liberado' : 'Bloqueado'}
@@ -368,10 +595,74 @@ export default function Usuarios() {
           fields={[
             { name: 'nome', label: 'Nome' },
             { name: 'email', label: 'Email', type: 'email' },
+            { name: 'cpf', label: 'CPF' },
+            { name: 'celular', label: 'Celular' },
+            { name: 'telefone', label: 'Telefone' },
+            { name: 'cnpj', label: 'CNPJ' },
           ]}
           initialValues={editandoComerciante}
           onSave={(valores) => handleSalvarComerciante(editandoComerciante, valores)}
           onClose={() => setEditandoComerciante(null)}
+        />
+      )}
+
+      {editandoImagemConsumidor && (
+        <EditarImagemModal
+          title={`Imagem — ${editandoImagemConsumidor.nome || '#' + editandoImagemConsumidor.id}`}
+          imagemUrl={editandoImagemConsumidor.imagemUrl}
+          onUpload={handleUploadImagemConsumidor}
+          onRemover={handleRemoverImagemConsumidor}
+          onClose={() => setEditandoImagemConsumidor(null)}
+        />
+      )}
+
+      {editandoImagemComerciante && (
+        <EditarImagemModal
+          title={`Imagem — ${editandoImagemComerciante.nome || '#' + editandoImagemComerciante.id_comerciante}`}
+          imagemUrl={editandoImagemComerciante.imagemUrl}
+          onUpload={handleUploadImagemComerciante}
+          onRemover={handleRemoverImagemComerciante}
+          onClose={() => setEditandoImagemComerciante(null)}
+        />
+      )}
+
+      {criandoConsumidor && (
+        <EditModal
+          title="Novo consumidor"
+          fields={CAMPOS_NOVO_CONSUMIDOR}
+          initialValues={{}}
+          onSave={handleCriarConsumidor}
+          onClose={() => setCriandoConsumidor(false)}
+        />
+      )}
+
+      {criandoComerciante && (
+        <EditModal
+          title="Novo comerciante"
+          fields={CAMPOS_NOVO_COMERCIANTE}
+          initialValues={{}}
+          onSave={handleCriarComerciante}
+          onClose={() => setCriandoComerciante(false)}
+        />
+      )}
+
+      {editandoAdmin && (
+        <EditModal
+          title={`Editar administrador — ${editandoAdmin.nome || '#' + editandoAdmin.id}`}
+          fields={CAMPOS_EDITAR_ADMIN}
+          initialValues={editandoAdmin}
+          onSave={(valores) => handleSalvarAdmin(editandoAdmin, valores)}
+          onClose={() => setEditandoAdmin(null)}
+        />
+      )}
+
+      {criandoAdmin && (
+        <EditModal
+          title="Novo administrador"
+          fields={CAMPOS_NOVO_ADMIN}
+          initialValues={{}}
+          onSave={handleCriarAdmin}
+          onClose={() => setCriandoAdmin(false)}
         />
       )}
     </div>

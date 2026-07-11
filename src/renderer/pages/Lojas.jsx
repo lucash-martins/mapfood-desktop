@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { listarLojas, atualizarLoja, resolveImagemUrl } from '../services/api'
+import { listarLojas, atualizarLoja, resolveImagemUrl, enviarImagemLoja, removerImagemLoja, enviarGaleriaLoja, removerImagemGaleriaLoja } from '../services/api'
 import EditModal from '../components/EditModal'
+import EditarImagemModal from '../components/EditarImagemModal'
 import Icon from '../components/Icon'
 
 function Avatar({ src, nome }) {
@@ -12,8 +13,47 @@ function Avatar({ src, nome }) {
   return <img className="avatar avatar-loja" src={url} alt={nome || ''} onError={() => setErro(true)} />
 }
 
-function GaleriaModal({ nome, imagens, onClose }) {
+// Uma foto cuja URL não carrega mais está, na prática, excluída — some da grade
+// e do contador em vez de ficar ocupando espaço como "imagem indisponível".
+function ThumbImg({ src, alt, onClick, onIndisponivel }) {
+  const [oculto, setOculto] = useState(false)
+  if (oculto) return null
+  return (
+    <img
+      src={resolveImagemUrl(src)}
+      alt={alt}
+      className="galeria-thumb"
+      loading="lazy"
+      onClick={onClick}
+      onError={() => { setOculto(true); onIndisponivel() }}
+    />
+  )
+}
+
+// Precisa ser remontado (key={src} no local de uso) ao navegar entre fotos,
+// senão o estado de "oculto" de uma foto quebrada vazaria para a próxima.
+function LightboxImg({ src, alt, onIndisponivel }) {
+  const [oculto, setOculto] = useState(false)
+  if (oculto) return null
+  return (
+    <img
+      src={resolveImagemUrl(src)}
+      alt={alt}
+      className="lightbox-img"
+      onError={() => { setOculto(true); onIndisponivel() }}
+    />
+  )
+}
+
+function GaleriaModal({ loja, onGaleriaChange, onClose }) {
   const [indice, setIndice] = useState(null) // null = grade, número = lightbox
+  const [enviando, setEnviando] = useState(false)
+  const [removendo, setRemovendo] = useState(null)
+  const [erro, setErro] = useState(null)
+
+  const nome = loja.nome
+  const galeria = loja.galeria || []
+  const imagens = galeria.filter(Boolean)
 
   useEffect(() => {
     function handleKey(e) {
@@ -30,6 +70,48 @@ function GaleriaModal({ nome, imagens, onClose }) {
     return () => window.removeEventListener('keydown', handleKey)
   }, [indice, imagens.length, onClose])
 
+  // O índice pode ficar fora dos limites depois de uma remoção — volta pra grade nesse caso
+  useEffect(() => {
+    if (indice !== null && indice >= imagens.length) setIndice(null)
+  }, [imagens.length, indice])
+
+  async function handleAdicionarFotos(e) {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (files.length === 0) return
+    setErro(null)
+    setEnviando(true)
+    try {
+      const atualizado = await enviarGaleriaLoja(loja.id, files)
+      onGaleriaChange(atualizado.galeria || [])
+    } catch (err) {
+      setErro(err?.message || 'Erro ao enviar imagens.')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  // Uma foto que não carrega mais não existe de fato — tira da galeria local
+  // (sem chamada à API: se ela ainda existisse no servidor, o próximo sync a devolve)
+  function handleImagemIndisponivel(url) {
+    onGaleriaChange(galeria.filter(g => g !== url))
+    if (indice !== null && imagens[indice] === url) setIndice(null)
+  }
+
+  async function handleRemoverFoto(url) {
+    if (!window.confirm('Remover esta imagem da galeria?')) return
+    setErro(null)
+    setRemovendo(url)
+    try {
+      const atualizado = await removerImagemGaleriaLoja(loja.id, url)
+      onGaleriaChange(atualizado.galeria || [])
+    } catch (err) {
+      setErro(err?.message || 'Erro ao remover imagem.')
+    } finally {
+      setRemovendo(null)
+    }
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel" onClick={e => e.stopPropagation()}>
@@ -38,31 +120,68 @@ function GaleriaModal({ nome, imagens, onClose }) {
           <button className="modal-close" onClick={onClose} aria-label="Fechar">×</button>
         </div>
 
+        {erro && <div className="error-msg" style={{ margin: '0.75rem 1.25rem 0' }}>{erro}</div>}
+
         {indice === null ? (
-          <div className="galeria-grid">
-            {imagens.map((url, i) => (
-              <img
-                key={i}
-                src={resolveImagemUrl(url)}
-                alt={`${nome} — foto ${i + 1}`}
-                className="galeria-thumb"
-                loading="lazy"
-                onClick={() => setIndice(i)}
-              />
-            ))}
-          </div>
+          <>
+            <div className="galeria-toolbar">
+              <label className="btn-secondary" style={{ width: 'auto', cursor: 'pointer' }}>
+                {enviando ? 'Enviando...' : '+ Adicionar fotos'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleAdicionarFotos}
+                  disabled={enviando}
+                  style={{ display: 'none' }}
+                />
+              </label>
+            </div>
+            <div className="galeria-grid">
+              {imagens.map((url, i) => (
+                <div className="galeria-thumb-wrapper" key={url}>
+                  <ThumbImg
+                    src={url}
+                    alt={`${nome} — foto ${i + 1}`}
+                    onClick={() => setIndice(i)}
+                    onIndisponivel={() => handleImagemIndisponivel(url)}
+                  />
+                  <button
+                    className="galeria-thumb-remove"
+                    title="Remover imagem da galeria"
+                    disabled={removendo === url}
+                    onClick={(e) => { e.stopPropagation(); handleRemoverFoto(url) }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
-          <div className="lightbox">
-            <button className="lightbox-back" onClick={() => setIndice(null)}>← Voltar à grade</button>
+          <>
+            <div className="lightbox-toolbar">
+              <button className="lightbox-back" onClick={() => setIndice(null)}>← Voltar à grade</button>
+              <button
+                className="lightbox-back"
+                style={{ color: 'var(--danger)', marginLeft: 'auto' }}
+                disabled={removendo === imagens[indice]}
+                onClick={() => handleRemoverFoto(imagens[indice])}
+              >
+                Remover esta imagem
+              </button>
+            </div>
+            <div className="lightbox">
             <button
               className="lightbox-nav"
               disabled={imagens.length < 2}
               onClick={() => setIndice(i => (i - 1 + imagens.length) % imagens.length)}
             >‹</button>
-            <img
-              src={resolveImagemUrl(imagens[indice])}
+            <LightboxImg
+              key={imagens[indice]}
+              src={imagens[indice]}
               alt={`${nome} — foto ${indice + 1}`}
-              className="lightbox-img"
+              onIndisponivel={() => handleImagemIndisponivel(imagens[indice])}
             />
             <button
               className="lightbox-nav"
@@ -70,30 +189,41 @@ function GaleriaModal({ nome, imagens, onClose }) {
               onClick={() => setIndice(i => (i + 1) % imagens.length)}
             >›</button>
             <div className="lightbox-counter">{indice + 1} / {imagens.length}</div>
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>
   )
 }
 
-function FotoCell({ loja }) {
+function FotoCell({ loja, onEditarImagem, onGaleriaChange }) {
   const [galeriaAberta, setGaleriaAberta] = useState(false)
   const imagens = [loja.imagemUrl, ...(loja.galeria || [])].filter(Boolean)
-  const temImagens = imagens.length > 0
 
   return (
     <>
       <div
-        className={temImagens ? 'avatar-wrapper clickable' : 'avatar-wrapper'}
-        onClick={() => temImagens && setGaleriaAberta(true)}
-        title={temImagens ? 'Ver galeria de imagens' : undefined}
+        className="avatar-wrapper clickable"
+        onClick={() => setGaleriaAberta(true)}
+        title="Ver/gerenciar galeria de imagens"
       >
         <Avatar src={loja.imagemUrl} nome={loja.nome} />
         {imagens.length > 1 && <span className="avatar-badge">{imagens.length}</span>}
+        <button
+          className="avatar-edit-btn"
+          title="Editar imagem principal"
+          onClick={(e) => { e.stopPropagation(); onEditarImagem(loja) }}
+        >
+          <Icon name="edit" size={10} />
+        </button>
       </div>
       {galeriaAberta && (
-        <GaleriaModal nome={loja.nome} imagens={imagens} onClose={() => setGaleriaAberta(false)} />
+        <GaleriaModal
+          loja={loja}
+          onGaleriaChange={(novaGaleria) => onGaleriaChange(loja.id, novaGaleria)}
+          onClose={() => setGaleriaAberta(false)}
+        />
       )}
     </>
   )
@@ -116,6 +246,7 @@ export default function Lojas() {
   const [erro, setErro] = useState(null)
   const [atualizando, setAtualizando] = useState(null)
   const [editando, setEditando] = useState(null)
+  const [editandoImagem, setEditandoImagem] = useState(null)
 
   useEffect(() => {
     async function carregar() {
@@ -156,6 +287,22 @@ export default function Lojas() {
       prev.map(l => l.id === loja.id ? { ...l, nome: valores.nome, descricao: valores.descricao } : l)
     )
     setEditando(null)
+  }
+
+  async function handleUploadImagem(file) {
+    const atualizado = await enviarImagemLoja(editandoImagem.id, file)
+    setLojas(prev => prev.map(l => l.id === editandoImagem.id ? { ...l, imagemUrl: atualizado.imagemUrl } : l))
+    setEditandoImagem(prev => prev ? { ...prev, imagemUrl: atualizado.imagemUrl } : prev)
+  }
+
+  async function handleRemoverImagem() {
+    const atualizado = await removerImagemLoja(editandoImagem.id)
+    setLojas(prev => prev.map(l => l.id === editandoImagem.id ? { ...l, imagemUrl: atualizado.imagemUrl } : l))
+    setEditandoImagem(prev => prev ? { ...prev, imagemUrl: atualizado.imagemUrl } : prev)
+  }
+
+  function handleGaleriaChange(lojaId, novaGaleria) {
+    setLojas(prev => prev.map(l => l.id === lojaId ? { ...l, galeria: novaGaleria } : l))
   }
 
   const lojasFiltradas = lojas
@@ -208,6 +355,7 @@ export default function Lojas() {
                   <th>Foto</th>
                   <th>ID</th>
                   <th>Nome</th>
+                  <th>Descrição</th>
                   <th>Comerciante</th>
                   <th>Status</th>
                   <th>Data Cadastro</th>
@@ -216,11 +364,16 @@ export default function Lojas() {
                 </tr>
               </thead>
               <tbody>
-                {lojasFiltradas.map(loja => (
+                {lojasFiltradas.map(loja => {
+                  const descricao = loja.descricao?.length > 60
+                    ? loja.descricao.substring(0, 60) + '...'
+                    : loja.descricao
+                  return (
                   <tr key={loja.id}>
-                    <td><FotoCell loja={loja} /></td>
+                    <td><FotoCell loja={loja} onEditarImagem={setEditandoImagem} onGaleriaChange={handleGaleriaChange} /></td>
                     <td>#{loja.id}</td>
                     <td>{loja.nome || '—'}</td>
+                    <td style={{ maxWidth: 220 }}>{descricao || '—'}</td>
                     <td>{loja.comerciante?.nome || '—'}</td>
                     <td><span className={badgeClass(loja.statusLoja)}>{loja.statusLoja}</span></td>
                     <td>{loja.dataCadastro ? new Date(loja.dataCadastro).toLocaleDateString('pt-BR') : '—'}</td>
@@ -278,7 +431,8 @@ export default function Lojas() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -295,6 +449,16 @@ export default function Lojas() {
           initialValues={editando}
           onSave={(valores) => handleSalvarEdicao(editando, valores)}
           onClose={() => setEditando(null)}
+        />
+      )}
+
+      {editandoImagem && (
+        <EditarImagemModal
+          title={`Imagem — ${editandoImagem.nome || '#' + editandoImagem.id}`}
+          imagemUrl={editandoImagem.imagemUrl}
+          onUpload={handleUploadImagem}
+          onRemover={handleRemoverImagem}
+          onClose={() => setEditandoImagem(null)}
         />
       )}
     </div>

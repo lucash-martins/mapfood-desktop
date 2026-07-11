@@ -193,7 +193,23 @@ async function pushPendingOps(token) {
 
 async function pullAll(token) {
   const endpoints = [
-    { path: '/lojas', upsert: (item) => database.upsertLoja(item) },
+    {
+      path: '/lojas',
+      upsert: (item) => database.upsertLoja(item),
+      reconcile: (serverIds) => {
+        const locals = database.listarTodasLojas()
+        const pendingIds = new Set(
+          database.getPendingOps()
+            .filter(o => o.entity === 'loja')
+            .map(o => o.entity_id)
+        )
+        for (const local of locals) {
+          if (!serverIds.has(local.id) && (!local.dirty || !pendingIds.has(local.id))) {
+            database.removerLoja(local.id)
+          }
+        }
+      },
+    },
     {
       path: '/denuncias',
       upsert: (item) => database.upsertDenuncia(item),
@@ -212,7 +228,23 @@ async function pullAll(token) {
         }
       },
     },
-    { path: '/avaliacoes', upsert: (item) => database.upsertAvaliacao(item) },
+    {
+      path: '/avaliacoes',
+      upsert: (item) => database.upsertAvaliacao(item),
+      reconcile: (serverIds) => {
+        const locals = database.listarTodasAvaliacoes()
+        const pendingIds = new Set(
+          database.getPendingOps()
+            .filter(o => o.entity === 'avaliacao')
+            .map(o => o.entity_id)
+        )
+        for (const local of locals) {
+          if (!serverIds.has(local.id) && (!local.dirty || !pendingIds.has(local.id))) {
+            database.removerAvaliacao(local.id)
+          }
+        }
+      },
+    },
     { path: '/consumidores', upsert: (item) => database.upsertConsumidor(item) },
     { path: '/comerciantes', upsert: (item) => database.upsertComerciante(item) },
   ]

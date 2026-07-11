@@ -68,6 +68,7 @@ function denunciaToRow(d) {
     loja_nome: d.lojaNome ?? d.loja?.nome ?? null,
     consumidor_id: d.consumidorId ?? d.consumidor?.id ?? null,
     consumidor_nome: d.consumidorNome ?? d.consumidor?.nome ?? null,
+    motivo: d.motivo ?? null,
     descricao: d.descricao ?? null,
     status_denuncia: d.statusDenuncia ?? null,
     data_denuncia: normalizarData(d.dataDenuncia),
@@ -81,6 +82,7 @@ function rowToDenuncia(row) {
     lojaId: row.loja_id,
     loja: { id: row.loja_id, nome: row.loja_nome },
     consumidor: { id: row.consumidor_id, nome: row.consumidor_nome },
+    motivo: row.motivo,
     descricao: row.descricao,
     statusDenuncia: row.status_denuncia,
     dataDenuncia: row.data_denuncia,
@@ -203,6 +205,7 @@ CREATE TABLE IF NOT EXISTS denuncias (
   loja_nome        TEXT,
   consumidor_id    INTEGER,
   consumidor_nome  TEXT,
+  motivo           TEXT,
   descricao        TEXT,
   status_denuncia  TEXT,
   data_denuncia    TEXT,
@@ -374,6 +377,13 @@ function _runMigrations() {
   if (v7Aplicada) {
     db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (7)').run()
   }
+
+  const denunciasCols = db.prepare("PRAGMA table_info(denuncias)").all().map(r => r.name)
+  if (!denunciasCols.includes('motivo')) {
+    db.prepare('ALTER TABLE denuncias ADD COLUMN motivo TEXT').run()
+    db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (8)').run()
+    console.log('[database] Migration v8: denuncias.motivo')
+  }
 }
 
 function _limparDuplicatas() {
@@ -427,6 +437,10 @@ function marcarLojaExcluida(id) {
   db.prepare('UPDATE lojas SET deleted_locally = 1 WHERE id = ?').run(id)
 }
 
+function listarTodasLojas() {
+  return db.prepare('SELECT id, dirty FROM lojas').all()
+}
+
 function atualizarLoja(id, data) {
   const existing = db.prepare('SELECT * FROM lojas WHERE id = ?').get(id)
   if (!existing) throw new Error(`Loja ${id} nao encontrada`)
@@ -459,6 +473,7 @@ function listarDenuncias() {
       COALESCE(d.loja_nome, l.nome) AS loja_nome,
       d.consumidor_id,
       d.consumidor_nome,
+      d.motivo,
       d.descricao,
       d.status_denuncia,
       d.data_denuncia,
@@ -479,13 +494,14 @@ function listarTodasDenuncias() {
 function upsertDenuncia(denuncia) {
   const row = denunciaToRow(denuncia)
   db.prepare(`
-    INSERT INTO denuncias (id, loja_id, loja_nome, consumidor_id, consumidor_nome, descricao, status_denuncia, data_denuncia, synced_at, dirty)
-    VALUES (@id, @loja_id, @loja_nome, @consumidor_id, @consumidor_nome, @descricao, @status_denuncia, @data_denuncia, @synced_at, 0)
+    INSERT INTO denuncias (id, loja_id, loja_nome, consumidor_id, consumidor_nome, motivo, descricao, status_denuncia, data_denuncia, synced_at, dirty)
+    VALUES (@id, @loja_id, @loja_nome, @consumidor_id, @consumidor_nome, @motivo, @descricao, @status_denuncia, @data_denuncia, @synced_at, 0)
     ON CONFLICT(id) DO UPDATE SET
       loja_id         = CASE WHEN dirty = 1 THEN loja_id         ELSE excluded.loja_id         END,
       loja_nome       = CASE WHEN dirty = 1 THEN loja_nome       ELSE excluded.loja_nome       END,
       consumidor_id   = CASE WHEN dirty = 1 THEN consumidor_id   ELSE excluded.consumidor_id   END,
       consumidor_nome = CASE WHEN dirty = 1 THEN consumidor_nome ELSE excluded.consumidor_nome END,
+      motivo          = CASE WHEN dirty = 1 THEN motivo          ELSE excluded.motivo          END,
       descricao       = CASE WHEN dirty = 1 THEN descricao       ELSE excluded.descricao       END,
       status_denuncia = CASE WHEN dirty = 1 THEN status_denuncia ELSE excluded.status_denuncia END,
       data_denuncia   = CASE WHEN dirty = 1 THEN data_denuncia   ELSE excluded.data_denuncia   END,
@@ -505,7 +521,7 @@ function atualizarDenuncia(id, data) {
   db.prepare(`
     UPDATE denuncias SET
       loja_id=@loja_id, loja_nome=@loja_nome, consumidor_id=@consumidor_id,
-      consumidor_nome=@consumidor_nome, descricao=@descricao,
+      consumidor_nome=@consumidor_nome, motivo=@motivo, descricao=@descricao,
       status_denuncia=@status_denuncia, data_denuncia=@data_denuncia, dirty=@dirty
     WHERE id=@id
   `).run(merged)
@@ -585,6 +601,10 @@ function marcarAvaliacaoSync(id) {
 
 function listarAvaliacoesPorLoja(lojaId) {
   return db.prepare('SELECT id FROM avaliacoes WHERE loja_id = ? AND deleted_locally = 0').all(lojaId)
+}
+
+function listarTodasAvaliacoes() {
+  return db.prepare('SELECT id, dirty FROM avaliacoes').all()
 }
 
 function marcarAvaliacaoExcluida(id) {
@@ -864,9 +884,9 @@ module.exports = {
   initialize,
   get,
   set,
-  listarLojas, upsertLoja, atualizarLoja, marcarLojaSync, marcarLojaExcluida,
+  listarLojas, listarTodasLojas, upsertLoja, atualizarLoja, marcarLojaSync, marcarLojaExcluida,
   listarDenuncias, listarTodasDenuncias, upsertDenuncia, atualizarDenuncia, marcarDenunciaSync, marcarDenunciaExcluida, removerDenuncia,
-  listarAvaliacoes, listarAvaliacoesPorLoja, upsertAvaliacao, atualizarAvaliacao, marcarAvaliacaoSync, marcarAvaliacaoExcluida, removerAvaliacao,
+  listarAvaliacoes, listarTodasAvaliacoes, listarAvaliacoesPorLoja, upsertAvaliacao, atualizarAvaliacao, marcarAvaliacaoSync, marcarAvaliacaoExcluida, removerAvaliacao,
   listarConsumidores, upsertConsumidor, atualizarConsumidor, marcarConsumidorSync, marcarConsumidorExcluido, removerConsumidor,
   listarComerciantes, upsertComerciante, marcarComercianteExcluido, removerComerciante,
   atualizarComerciante, atualizarComercianteDashboard, marcarComercianteSync,
