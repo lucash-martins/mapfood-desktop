@@ -168,7 +168,10 @@ async function pushPendingOps(token) {
       }
     } catch (err) {
       console.error(`[sync] Push ${op.entity}#${op.entity_id} falhou:`, err.status, err.message)
-      if (err.status && err.status >= 400 && err.status < 500) {
+      // 401/403 indicam sessão inválida (ex: admin_token expirado), não um dado inválido —
+      // descartar aqui apagaria a alteração do usuário silenciosamente. Mantém na fila para
+      // retry após novo login, como em erros de rede/servidor.
+      if (err.status && err.status >= 400 && err.status < 500 && err.status !== 401 && err.status !== 403) {
         console.warn(`[sync] Descartando op ${op.id} (${op.entity}#${op.entity_id}): erro permanente ${err.status}`)
         if (op.operation === 'update' || op.operation === 'update_dashboard') {
           marcarOpSync(op.entity, op.entity_id)
@@ -245,8 +248,50 @@ async function pullAll(token) {
         }
       },
     },
-    { path: '/consumidores', upsert: (item) => database.upsertConsumidor(item) },
-    { path: '/comerciantes', upsert: (item) => database.upsertComerciante(item) },
+    {
+      path: '/consumidores',
+      upsert: (item) => database.upsertConsumidor(item),
+      reconcile: (serverIds) => {
+        const locals = database.listarTodosConsumidores()
+        const pendingIds = new Set(
+          database.getPendingOps()
+            .filter(o => o.entity === 'consumidor')
+            .map(o => o.entity_id)
+        )
+        for (const local of locals) {
+          if (!serverIds.has(local.id) && (!local.dirty || !pendingIds.has(local.id))) {
+            database.removerConsumidor(local.id)
+          }
+        }
+      },
+    },
+    {
+      path: '/posts',
+      upsert: (item) => database.upsertPost(item),
+      reconcile: (serverIds) => {
+        const locals = database.listarTodosPosts()
+        for (const local of locals) {
+          if (!serverIds.has(local.id)) database.removerPost(local.id)
+        }
+      },
+    },
+    {
+      path: '/comerciantes',
+      upsert: (item) => database.upsertComerciante(item),
+      reconcile: (serverIds) => {
+        const locals = database.listarTodosComerciantes()
+        const pendingIds = new Set(
+          database.getPendingOps()
+            .filter(o => o.entity === 'comerciante')
+            .map(o => o.entity_id)
+        )
+        for (const local of locals) {
+          if (!serverIds.has(local.id) && (!local.dirty || !pendingIds.has(local.id))) {
+            database.removerComerciante(local.id)
+          }
+        }
+      },
+    },
   ]
 
   await Promise.all(endpoints.map(async ({ path, upsert, reconcile }) => {
@@ -260,7 +305,7 @@ async function pullAll(token) {
           console.error(`[sync] upsert ${path}#${item.id ?? item.id_comerciante} falhou:`, err.message)
         }
       }
-      if (reconcile) reconcile(new Set(items.map(i => i.id)))
+      if (reconcile) reconcile(new Set(items.map(i => i.id ?? i.id_comerciante)))
     } catch (err) {
       console.warn(`[sync] Pull ${path} falhou:`, err.message)
     }

@@ -242,3 +242,8 @@ export async function atualizarComercianteDashboard(id, enabled) {
 export async function getRelatorioStats() {
   return window.electronAPI?.db.getRelatorioStats()
 }
+
+// Blog — via IPC
+export async function getBlogStats() {
+  return window.electronAPI?.db.getBlogStats()
+}

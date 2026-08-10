@@ -32,6 +32,7 @@ export default function Layout() {
           <NavLink to="/avaliacoes">⭐ Avaliações</NavLink>
           <NavLink to="/lojas">🏪 Lojas</NavLink>
           <NavLink to="/usuarios">👥 Usuários</NavLink>
+          <NavLink to="/blog">📰 Blog</NavLink>
           <NavLink to="/relatorios">📈 Relatórios</NavLink>
         </nav>
         <StatusBar />

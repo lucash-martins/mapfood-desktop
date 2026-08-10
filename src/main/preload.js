@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     atualizarComercianteDashboard: (id, enabled) => ipcRenderer.invoke('db:atualizar-comerciante-dashboard', id, enabled),
     getDashboardStats: () => ipcRenderer.invoke('db:get-dashboard-stats'),
     getRelatorioStats: () => ipcRenderer.invoke('db:get-relatorio-stats'),
+    getBlogStats: () => ipcRenderer.invoke('db:get-blog-stats'),
   },
 
   sync: {

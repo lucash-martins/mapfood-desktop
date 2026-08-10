@@ -202,6 +202,7 @@ function registerHandlers(win) {
 
   ipcMain.handle('db:get-dashboard-stats', () => database.getDashboardStats())
   ipcMain.handle('db:get-relatorio-stats', () => database.getRelatorioStats())
+  ipcMain.handle('db:get-blog-stats', () => database.getBlogStats())
 
   // ── Sync ──────────────────────────────────────────────────────────────────
 

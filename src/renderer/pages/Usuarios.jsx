@@ -495,7 +495,7 @@ export default function Usuarios() {
                       <th>Celular</th>
                       <th>Telefone</th>
                       <th>CNPJ</th>
-                      <th>Dashboard</th>
+                      <th title="Libera/bloqueia Dashboard Analítico e Blog juntos">Dash e Blog</th>
                       <th>Ações</th>
                     </tr>
                   </thead>
@@ -538,7 +538,7 @@ export default function Usuarios() {
                             {c.dashboardEnabled ? (
                               <button
                                 className="btn-icon btn-danger"
-                                title="Retirar acesso ao dashboard"
+                                title="Retirar acesso ao Dashboard e Blog"
                                 disabled={alterandoDashboard === c.id_comerciante}
                                 onClick={() => handleToggleDashboard(c.id_comerciante, false)}
                               >
@@ -547,7 +547,7 @@ export default function Usuarios() {
                             ) : (
                               <button
                                 className="btn-icon btn-secondary"
-                                title="Liberar acesso ao dashboard"
+                                title="Liberar acesso ao Dashboard e Blog"
                                 disabled={alterandoDashboard === c.id_comerciante}
                                 onClick={() => handleToggleDashboard(c.id_comerciante, true)}
                               >

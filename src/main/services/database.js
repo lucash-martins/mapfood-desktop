@@ -249,6 +249,20 @@ CREATE TABLE IF NOT EXISTS comerciantes (
   deleted_locally  INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS posts (
+  id                INTEGER PRIMARY KEY,
+  comerciante_id    INTEGER,
+  comerciante_nome  TEXT,
+  titulo            TEXT,
+  conteudo          TEXT,
+  galeria           TEXT,
+  tipo              TEXT,
+  data_publicacao   TEXT,
+  total_curtidas    INTEGER DEFAULT 0,
+  total_comentarios INTEGER DEFAULT 0,
+  synced_at         TEXT
+);
+
 CREATE TABLE IF NOT EXISTS pending_ops (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -383,6 +397,22 @@ function _runMigrations() {
     db.prepare('ALTER TABLE denuncias ADD COLUMN motivo TEXT').run()
     db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (8)').run()
     console.log('[database] Migration v8: denuncias.motivo')
+  }
+
+  const postsCols = db.prepare("PRAGMA table_info(posts)").all().map(r => r.name)
+  let v9Aplicada = false
+  if (!postsCols.includes('conteudo')) {
+    db.prepare('ALTER TABLE posts ADD COLUMN conteudo TEXT').run()
+    console.log('[database] Migration v9: posts.conteudo')
+    v9Aplicada = true
+  }
+  if (!postsCols.includes('galeria')) {
+    db.prepare('ALTER TABLE posts ADD COLUMN galeria TEXT').run()
+    console.log('[database] Migration v9: posts.galeria')
+    v9Aplicada = true
+  }
+  if (v9Aplicada) {
+    db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (9)').run()
   }
 }
 
@@ -621,6 +651,10 @@ function listarConsumidores() {
   return db.prepare('SELECT * FROM consumidores WHERE deleted_locally = 0 ORDER BY nome').all().map(rowToConsumidor)
 }
 
+function listarTodosConsumidores() {
+  return db.prepare('SELECT id, dirty FROM consumidores').all()
+}
+
 function upsertConsumidor(consumidor) {
   const row = consumidorToRow(consumidor)
   db.prepare(`
@@ -668,6 +702,10 @@ function removerConsumidor(id) {
 
 function listarComerciantes() {
   return db.prepare('SELECT * FROM comerciantes WHERE deleted_locally = 0 ORDER BY nome').all().map(rowToComerciante)
+}
+
+function listarTodosComerciantes() {
+  return db.prepare('SELECT id_comerciante AS id, dirty FROM comerciantes').all()
 }
 
 function upsertComerciante(comerciante) {
@@ -805,6 +843,54 @@ function getDashboardStats() {
   return { totalLojas, lojasAtivas, totalConsumidores, totalComerciantes, denunciasPendentes, totalAvaliacoes, denunciasRecentes }
 }
 
+// ─── Posts (blog) ──────────────────────────────────────────────────────────
+// Espelho somente-leitura do blog — o Desktop nunca cria/edita posts, só usa
+// os dados pra contabilização nos Relatórios, então não precisa de dirty/pending_ops.
+
+function upsertPost(post) {
+  const id = post.id ?? null
+  if (!id) {
+    console.warn('[database] upsertPost ignorado: id nulo', post)
+    return
+  }
+  const row = {
+    id,
+    comerciante_id: post.comercianteId ?? null,
+    comerciante_nome: post.comercianteNome ?? null,
+    titulo: post.titulo ?? null,
+    conteudo: post.conteudo ?? null,
+    galeria: Array.isArray(post.galeria) ? JSON.stringify(post.galeria) : null,
+    tipo: post.tipo ?? null,
+    data_publicacao: post.dataPublicacao ?? null,
+    total_curtidas: post.totalCurtidas ?? 0,
+    total_comentarios: post.totalComentarios ?? 0,
+    synced_at: new Date().toISOString(),
+  }
+  db.prepare(`
+    INSERT INTO posts (id, comerciante_id, comerciante_nome, titulo, conteudo, galeria, tipo, data_publicacao, total_curtidas, total_comentarios, synced_at)
+    VALUES (@id, @comerciante_id, @comerciante_nome, @titulo, @conteudo, @galeria, @tipo, @data_publicacao, @total_curtidas, @total_comentarios, @synced_at)
+    ON CONFLICT(id) DO UPDATE SET
+      comerciante_id    = excluded.comerciante_id,
+      comerciante_nome  = excluded.comerciante_nome,
+      titulo            = excluded.titulo,
+      conteudo          = excluded.conteudo,
+      galeria           = excluded.galeria,
+      tipo              = excluded.tipo,
+      data_publicacao   = excluded.data_publicacao,
+      total_curtidas    = excluded.total_curtidas,
+      total_comentarios = excluded.total_comentarios,
+      synced_at         = excluded.synced_at
+  `).run(row)
+}
+
+function listarTodosPosts() {
+  return db.prepare('SELECT id FROM posts').all()
+}
+
+function removerPost(id) {
+  db.prepare('DELETE FROM posts WHERE id = ?').run(id)
+}
+
 // ─── Relatorios ────────────────────────────────────────────────────────────
 
 function getRelatorioStats() {
@@ -878,6 +964,52 @@ function getRelatorioStats() {
   }
 }
 
+// ─── Blog Stats ────────────────────────────────────────────────────────────
+
+function getBlogStats() {
+  const totalPosts = db.prepare('SELECT COUNT(*) as c FROM posts').get().c
+  const totalCurtidas = db.prepare('SELECT COALESCE(SUM(total_curtidas), 0) as s FROM posts').get().s
+  const totalComentarios = db.prepare('SELECT COALESCE(SUM(total_comentarios), 0) as s FROM posts').get().s
+
+  const postsPorComerciante = db.prepare(`
+    SELECT
+      comerciante_id,
+      comerciante_nome,
+      COUNT(*) as total_posts,
+      COALESCE(SUM(total_curtidas), 0) as total_curtidas,
+      COALESCE(SUM(total_comentarios), 0) as total_comentarios
+    FROM posts
+    GROUP BY comerciante_id, comerciante_nome
+    ORDER BY total_posts DESC
+  `).all()
+
+  const rankingPosts = db.prepare(`
+    SELECT
+      id, titulo, comerciante_nome, tipo, data_publicacao, total_curtidas, total_comentarios,
+      (total_curtidas + total_comentarios) as engajamento
+    FROM posts
+    ORDER BY engajamento DESC, data_publicacao DESC
+    LIMIT 10
+  `).all()
+
+  // Lista completa, usada na tabela pesquisável/ordenável da página de Blog.
+  // Inclui conteúdo e galeria para permitir revisar o post inteiro em caso de denúncia.
+  const postsDetalhe = db.prepare(`
+    SELECT id, titulo, conteudo, galeria, comerciante_nome, tipo, data_publicacao, total_curtidas, total_comentarios
+    FROM posts
+    ORDER BY data_publicacao DESC
+  `).all().map(p => ({ ...p, galeria: parseGaleria(p.galeria) }))
+
+  return {
+    totalPosts,
+    totalCurtidas,
+    totalComentarios,
+    postsPorComerciante,
+    rankingPosts,
+    postsDetalhe,
+  }
+}
+
 // ─── Exports ───────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -887,13 +1019,15 @@ module.exports = {
   listarLojas, listarTodasLojas, upsertLoja, atualizarLoja, marcarLojaSync, marcarLojaExcluida,
   listarDenuncias, listarTodasDenuncias, upsertDenuncia, atualizarDenuncia, marcarDenunciaSync, marcarDenunciaExcluida, removerDenuncia,
   listarAvaliacoes, listarTodasAvaliacoes, listarAvaliacoesPorLoja, upsertAvaliacao, atualizarAvaliacao, marcarAvaliacaoSync, marcarAvaliacaoExcluida, removerAvaliacao,
-  listarConsumidores, upsertConsumidor, atualizarConsumidor, marcarConsumidorSync, marcarConsumidorExcluido, removerConsumidor,
-  listarComerciantes, upsertComerciante, marcarComercianteExcluido, removerComerciante,
+  listarConsumidores, listarTodosConsumidores, upsertConsumidor, atualizarConsumidor, marcarConsumidorSync, marcarConsumidorExcluido, removerConsumidor,
+  listarComerciantes, listarTodosComerciantes, upsertComerciante, marcarComercianteExcluido, removerComerciante,
   atualizarComerciante, atualizarComercianteDashboard, marcarComercianteSync,
   listarLojasDoComerciante, removerLoja,
+  upsertPost, listarTodosPosts, removerPost,
   addPendingOp, getPendingOps, removePendingOp, incrementPendingOpRetry,
   getDashboardStats,
   getRelatorioStats,
+  getBlogStats,
   verificarDadosConsumidor, getDadosConsumidor,
   getDenunciasPorLoja, verificarDadosComerciante,
 }
