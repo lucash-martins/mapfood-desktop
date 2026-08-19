@@ -85,6 +85,20 @@ export async function loginAdmin(email, senha) {
   })
 }
 
+export async function recuperarSenha(email) {
+  return apiFetch('/auth/recuperar-senha', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function redefinirSenha(token, novaSenha) {
+  return apiFetch('/auth/redefinir-senha', {
+    method: 'POST',
+    body: JSON.stringify({ token, novaSenha }),
+  })
+}
+
 // Criação de usuários — POST direto no backend (endpoints públicos), sempre precisa de rede.
 // Depois do sucesso, força um sync para trazer o registro criado para o cache local.
 export async function criarConsumidor(data) {
