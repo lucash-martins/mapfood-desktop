@@ -85,6 +85,15 @@ export async function loginAdmin(email, senha) {
   })
 }
 
+// Solicita o link de redefinição de senha por e-mail. Resposta sempre igual, exista ou
+// não a conta, então nunca revela quais e-mails de administrador estão cadastrados.
+export async function esqueciSenhaAdmin(email) {
+  return apiFetch('/auth/esqueci-senha', {
+    method: 'POST',
+    body: JSON.stringify({ email, tipo: 'ADMINISTRADOR' }),
+  })
+}
+
 // Criação de usuários — POST direto no backend (endpoints públicos), sempre precisa de rede.
 // Depois do sucesso, força um sync para trazer o registro criado para o cache local.
 export async function criarConsumidor(data) {
