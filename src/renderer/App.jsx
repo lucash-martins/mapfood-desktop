@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
+import EsqueciSenha from './pages/EsqueciSenha'
 import Dashboard from './pages/Dashboard'
 import Denuncias from './pages/Denuncias'
 import Avaliacoes from './pages/Avaliacoes'
@@ -45,6 +46,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/esqueci-senha" element={<EsqueciSenha />} />
       <Route path="/" element={<RootRedirect />} />
       <Route element={<PrivateRoute />}>
         <Route path="/dashboard" element={<Dashboard />} />

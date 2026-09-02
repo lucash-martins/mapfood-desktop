@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { loginAdmin } from '../services/api'
 
 export default function Login() {
@@ -83,6 +83,13 @@ export default function Login() {
           >
             {carregando ? 'Entrando...' : 'Entrar'}
           </button>
+
+          <Link
+            to="/esqueci-senha"
+            style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}
+          >
+            Esqueci minha senha
+          </Link>
         </form>
       </div>
     </div>
