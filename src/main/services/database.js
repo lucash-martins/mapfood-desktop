@@ -72,6 +72,13 @@ function denunciaToRow(d) {
     descricao: d.descricao ?? null,
     status_denuncia: d.statusDenuncia ?? null,
     data_denuncia: normalizarData(d.dataDenuncia),
+    // Campos de risco sanitário e do contraditório do comerciante
+    data_consumo: d.dataConsumo ?? null,
+    item_consumido: d.itemConsumido ?? null,
+    foto_url: d.fotoUrl ?? null,
+    resposta_comerciante: d.respostaComerciante ?? null,
+    data_resposta: normalizarData(d.dataResposta),
+    prazo_resposta: normalizarData(d.prazoResposta),
     synced_at: new Date().toISOString(),
   }
 }
@@ -86,6 +93,12 @@ function rowToDenuncia(row) {
     descricao: row.descricao,
     statusDenuncia: row.status_denuncia,
     dataDenuncia: row.data_denuncia,
+    dataConsumo: row.data_consumo,
+    itemConsumido: row.item_consumido,
+    fotoUrl: row.foto_url,
+    respostaComerciante: row.resposta_comerciante,
+    dataResposta: row.data_resposta,
+    prazoResposta: row.prazo_resposta,
     syncedAt: row.synced_at,
     dirty: !!row.dirty,
   }
@@ -209,6 +222,12 @@ CREATE TABLE IF NOT EXISTS denuncias (
   descricao        TEXT,
   status_denuncia  TEXT,
   data_denuncia    TEXT,
+  data_consumo         TEXT,
+  item_consumido       TEXT,
+  foto_url             TEXT,
+  resposta_comerciante TEXT,
+  data_resposta        TEXT,
+  prazo_resposta       TEXT,
   synced_at        TEXT,
   dirty            INTEGER DEFAULT 0,
   deleted_locally  INTEGER DEFAULT 0
@@ -414,6 +433,28 @@ function _runMigrations() {
   if (v9Aplicada) {
     db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (9)').run()
   }
+
+  // v10: campos de risco sanitário e do contraditório do comerciante nas denúncias
+  const denunciasColsV10 = db.prepare("PRAGMA table_info(denuncias)").all().map(r => r.name)
+  const novasColunas = [
+    'data_consumo',
+    'item_consumido',
+    'foto_url',
+    'resposta_comerciante',
+    'data_resposta',
+    'prazo_resposta',
+  ]
+  let v10Aplicada = false
+  for (const coluna of novasColunas) {
+    if (!denunciasColsV10.includes(coluna)) {
+      db.prepare(`ALTER TABLE denuncias ADD COLUMN ${coluna} TEXT`).run()
+      console.log(`[database] Migration v10: denuncias.${coluna}`)
+      v10Aplicada = true
+    }
+  }
+  if (v10Aplicada) {
+    db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (10)').run()
+  }
 }
 
 function _limparDuplicatas() {
@@ -507,6 +548,12 @@ function listarDenuncias() {
       d.descricao,
       d.status_denuncia,
       d.data_denuncia,
+      d.data_consumo,
+      d.item_consumido,
+      d.foto_url,
+      d.resposta_comerciante,
+      d.data_resposta,
+      d.prazo_resposta,
       d.synced_at,
       d.dirty,
       d.deleted_locally
@@ -524,8 +571,8 @@ function listarTodasDenuncias() {
 function upsertDenuncia(denuncia) {
   const row = denunciaToRow(denuncia)
   db.prepare(`
-    INSERT INTO denuncias (id, loja_id, loja_nome, consumidor_id, consumidor_nome, motivo, descricao, status_denuncia, data_denuncia, synced_at, dirty)
-    VALUES (@id, @loja_id, @loja_nome, @consumidor_id, @consumidor_nome, @motivo, @descricao, @status_denuncia, @data_denuncia, @synced_at, 0)
+    INSERT INTO denuncias (id, loja_id, loja_nome, consumidor_id, consumidor_nome, motivo, descricao, status_denuncia, data_denuncia, data_consumo, item_consumido, foto_url, resposta_comerciante, data_resposta, prazo_resposta, synced_at, dirty)
+    VALUES (@id, @loja_id, @loja_nome, @consumidor_id, @consumidor_nome, @motivo, @descricao, @status_denuncia, @data_denuncia, @data_consumo, @item_consumido, @foto_url, @resposta_comerciante, @data_resposta, @prazo_resposta, @synced_at, 0)
     ON CONFLICT(id) DO UPDATE SET
       loja_id         = CASE WHEN dirty = 1 THEN loja_id         ELSE excluded.loja_id         END,
       loja_nome       = CASE WHEN dirty = 1 THEN loja_nome       ELSE excluded.loja_nome       END,
@@ -535,6 +582,12 @@ function upsertDenuncia(denuncia) {
       descricao       = CASE WHEN dirty = 1 THEN descricao       ELSE excluded.descricao       END,
       status_denuncia = CASE WHEN dirty = 1 THEN status_denuncia ELSE excluded.status_denuncia END,
       data_denuncia   = CASE WHEN dirty = 1 THEN data_denuncia   ELSE excluded.data_denuncia   END,
+      data_consumo         = CASE WHEN dirty = 1 THEN data_consumo         ELSE excluded.data_consumo         END,
+      item_consumido       = CASE WHEN dirty = 1 THEN item_consumido       ELSE excluded.item_consumido       END,
+      foto_url             = CASE WHEN dirty = 1 THEN foto_url             ELSE excluded.foto_url             END,
+      resposta_comerciante = CASE WHEN dirty = 1 THEN resposta_comerciante ELSE excluded.resposta_comerciante END,
+      data_resposta        = CASE WHEN dirty = 1 THEN data_resposta        ELSE excluded.data_resposta        END,
+      prazo_resposta       = CASE WHEN dirty = 1 THEN prazo_resposta       ELSE excluded.prazo_resposta       END,
       synced_at       = CASE WHEN dirty = 1 THEN synced_at       ELSE excluded.synced_at       END,
       deleted_locally = 0
   `).run(row)
@@ -552,7 +605,10 @@ function atualizarDenuncia(id, data) {
     UPDATE denuncias SET
       loja_id=@loja_id, loja_nome=@loja_nome, consumidor_id=@consumidor_id,
       consumidor_nome=@consumidor_nome, motivo=@motivo, descricao=@descricao,
-      status_denuncia=@status_denuncia, data_denuncia=@data_denuncia, dirty=@dirty
+      status_denuncia=@status_denuncia, data_denuncia=@data_denuncia,
+      data_consumo=@data_consumo, item_consumido=@item_consumido, foto_url=@foto_url,
+      resposta_comerciante=@resposta_comerciante, data_resposta=@data_resposta,
+      prazo_resposta=@prazo_resposta, dirty=@dirty
     WHERE id=@id
   `).run(merged)
   return rowToDenuncia(db.prepare('SELECT * FROM denuncias WHERE id = ?').get(id))

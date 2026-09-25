@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { listarDenuncias, atualizarDenuncia } from '../services/api'
+import { listarDenuncias, atualizarDenuncia, resolveImagemUrl } from '../services/api'
 import EditModal from '../components/EditModal'
 import Icon from '../components/Icon'
 
@@ -13,11 +13,21 @@ const STATUS_LABEL = {
 }
 
 const MOTIVO_LABEL = {
+  RISCO_SANITARIO: 'Risco sanitário',
   CONTEUDO_INAPROPRIADO: 'Conteúdo inapropriado',
   FRAUDE_OU_GOLPE: 'Fraude ou golpe',
   INFORMACOES_FALSAS: 'Informações falsas',
   SPAM: 'Spam',
   OUTRO: 'Outro',
+}
+
+function formatarData(iso, comHora = false) {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return comHora
+    ? d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+    : d.toLocaleDateString('pt-BR')
 }
 
 function statusLabel(status) {
@@ -45,6 +55,7 @@ export default function Denuncias() {
   const [erro, setErro] = useState(null)
   const [atualizando, setAtualizando] = useState(null)
   const [editando, setEditando] = useState(null)
+  const [expandida, setExpandida] = useState(null)
 
   useEffect(() => {
     async function carregar() {
@@ -131,6 +142,7 @@ export default function Denuncias() {
                   <th>Descrição</th>
                   <th>Status</th>
                   <th>Data</th>
+                  <th>Detalhes</th>
                   <th>Editar</th>
                   <th>Ações</th>
                 </tr>
@@ -138,11 +150,15 @@ export default function Denuncias() {
               <tbody>
                 {denunciasFiltradas.map(d => {
                   const emFinal = STATUS_FINAIS.includes(d.statusDenuncia)
+                  const aberta = expandida === d.id
                   const descricao = d.descricao?.length > 60
                     ? d.descricao.substring(0, 60) + '...'
                     : d.descricao
+                  const fotoUrl = d.fotoUrl ? resolveImagemUrl(d.fotoUrl) : null
+                  const prazoAberto = d.prazoResposta && new Date(d.prazoResposta) > new Date()
                   return (
-                    <tr key={d.id}>
+                    <React.Fragment key={d.id}>
+                    <tr>
                       <td>#{d.id}</td>
                       <td>{d.loja?.nome || '—'}</td>
                       <td>{d.consumidor?.nome || '—'}</td>
@@ -150,6 +166,15 @@ export default function Denuncias() {
                       <td style={{ maxWidth: 220 }}>{descricao || '—'}</td>
                       <td><span className={badgeClass(d.statusDenuncia)}>{statusLabel(d.statusDenuncia)}</span></td>
                       <td>{d.dataDenuncia ? new Date(d.dataDenuncia).toLocaleDateString('pt-BR') : '—'}</td>
+                      <td>
+                        <button
+                          className="btn-secondary"
+                          style={{ width: 'auto', padding: '0.3rem 0.7rem', fontSize: '0.8rem' }}
+                          onClick={() => setExpandida(aberta ? null : d.id)}
+                        >
+                          {aberta ? 'Ocultar' : 'Ver'}
+                        </button>
+                      </td>
                       <td>
                         <button
                           className="btn-icon btn-secondary"
@@ -194,6 +219,77 @@ export default function Denuncias() {
                         </div>
                       </td>
                     </tr>
+
+                    {aberta && (
+                      <tr>
+                        <td colSpan={10} style={{ background: 'var(--bg-subtle, #f7f7f8)' }}>
+                          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', padding: '0.5rem 0' }}>
+
+                            <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+                              <p style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', margin: '0 0 0.35rem' }}>
+                                Descrição completa
+                              </p>
+                              <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{d.descricao || '—'}</p>
+
+                              {d.motivo === 'RISCO_SANITARIO' && (d.itemConsumido || d.dataConsumo) && (
+                                <p style={{ margin: '0.6rem 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                                  {[
+                                    d.itemConsumido,
+                                    formatarData(d.dataConsumo) && `consumido em ${formatarData(d.dataConsumo)}`,
+                                  ].filter(Boolean).join(' · ')}
+                                </p>
+                              )}
+
+                              <div style={{ marginTop: '0.9rem' }}>
+                                <p style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', margin: '0 0 0.35rem' }}>
+                                  Resposta do comerciante
+                                </p>
+                                {d.respostaComerciante ? (
+                                  <>
+                                    <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{d.respostaComerciante}</p>
+                                    {formatarData(d.dataResposta, true) && (
+                                      <p style={{ margin: '0.3rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                        respondida em {formatarData(d.dataResposta, true)}
+                                      </p>
+                                    )}
+                                  </>
+                                ) : prazoAberto ? (
+                                  <p style={{ margin: 0, color: 'var(--text-muted)' }}>
+                                    Aguardando — o comerciante tem até {formatarData(d.prazoResposta, true)}.
+                                  </p>
+                                ) : d.prazoResposta ? (
+                                  <p style={{ margin: 0, color: 'var(--text-muted)' }}>
+                                    O prazo encerrou em {formatarData(d.prazoResposta, true)} sem manifestação.
+                                  </p>
+                                ) : (
+                                  <p style={{ margin: 0, color: 'var(--text-muted)' }}>
+                                    Sem prazo de resposta — este motivo trata do conteúdo publicado, não da
+                                    conduta do comerciante, e por isso não abre contraditório.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            {fotoUrl && (
+                              <div style={{ flex: '0 0 auto' }}>
+                                <p style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', margin: '0 0 0.35rem' }}>
+                                  Evidência
+                                </p>
+                                <a href={fotoUrl} target="_blank" rel="noopener noreferrer">
+                                  <img
+                                    src={fotoUrl}
+                                    alt={`Evidência da denúncia #${d.id}`}
+                                    style={{ width: 200, height: 200, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border, #ddd)' }}
+                                  />
+                                </a>
+                              </div>
+                            )}
+
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   )
                 })}
               </tbody>
