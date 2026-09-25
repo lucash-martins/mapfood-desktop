@@ -152,15 +152,6 @@ function registerHandlers(win) {
     database.addPendingOp('comerciante', id, 'delete', null)
   })
 
-  ipcMain.handle('db:atualizar-comerciante-dashboard', async (_e, id, enabled) => {
-    const comerciante = database.atualizarComercianteDashboard(id, enabled)
-    database.addPendingOp('comerciante', id, 'update_dashboard', { dashboardEnabled: enabled })
-    if (connectivityService.isOnline()) {
-      syncService.syncCompleto(win).catch(() => {})
-    }
-    return comerciante
-  })
-
   ipcMain.handle('db:atualizar-comerciante', async (_e, id, data) => {
     const comerciante = database.atualizarComerciante(id, data)
     database.addPendingOp('comerciante', id, 'update', comerciante)

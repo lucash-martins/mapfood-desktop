@@ -31,7 +31,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deletarComerciante: (id) => ipcRenderer.invoke('db:deletar-comerciante', id),
     deletarComercianteCascade: (id) => ipcRenderer.invoke('db:deletar-comerciante-cascade', id),
     verificarDadosComerciante: (id) => ipcRenderer.invoke('db:verificar-dados-comerciante', id),
-    atualizarComercianteDashboard: (id, enabled) => ipcRenderer.invoke('db:atualizar-comerciante-dashboard', id, enabled),
     getDashboardStats: () => ipcRenderer.invoke('db:get-dashboard-stats'),
     getRelatorioStats: () => ipcRenderer.invoke('db:get-relatorio-stats'),
     getBlogStats: () => ipcRenderer.invoke('db:get-blog-stats'),

@@ -166,7 +166,6 @@ function comercianteToRow(c) {
     celular: c.celular ?? null,
     telefone: c.telefone ?? null,
     cnpj: c.cnpj ?? null,
-    dashboard_enabled: c.dashboardEnabled ? 1 : 0,
     imagem_url: c.imagemUrl ?? null,
     synced_at: new Date().toISOString(),
   }
@@ -183,7 +182,6 @@ function rowToComerciante(row) {
     celular: row.celular,
     telefone: row.telefone,
     cnpj: row.cnpj,
-    dashboardEnabled: !!row.dashboard_enabled,
     imagemUrl: row.imagem_url,
     syncedAt: row.synced_at,
     dirty: !!row.dirty,
@@ -771,8 +769,8 @@ function upsertComerciante(comerciante) {
     return
   }
   db.prepare(`
-    INSERT INTO comerciantes (id_comerciante, nome, email, cpf, celular, telefone, cnpj, dashboard_enabled, imagem_url, synced_at, dirty, deleted_locally)
-    VALUES (@id_comerciante, @nome, @email, @cpf, @celular, @telefone, @cnpj, @dashboard_enabled, @imagem_url, @synced_at, 0, 0)
+    INSERT INTO comerciantes (id_comerciante, nome, email, cpf, celular, telefone, cnpj, imagem_url, synced_at, dirty, deleted_locally)
+    VALUES (@id_comerciante, @nome, @email, @cpf, @celular, @telefone, @cnpj, @imagem_url, @synced_at, 0, 0)
     ON CONFLICT(id_comerciante) DO UPDATE SET
       nome              = CASE WHEN dirty = 1 THEN nome              ELSE excluded.nome              END,
       email             = CASE WHEN dirty = 1 THEN email             ELSE excluded.email             END,
@@ -780,7 +778,6 @@ function upsertComerciante(comerciante) {
       celular           = CASE WHEN dirty = 1 THEN celular           ELSE excluded.celular           END,
       telefone          = CASE WHEN dirty = 1 THEN telefone          ELSE excluded.telefone          END,
       cnpj              = CASE WHEN dirty = 1 THEN cnpj              ELSE excluded.cnpj              END,
-      dashboard_enabled = CASE WHEN dirty = 1 THEN dashboard_enabled ELSE excluded.dashboard_enabled END,
       imagem_url        = CASE WHEN dirty = 1 THEN imagem_url        ELSE excluded.imagem_url        END,
       synced_at         = CASE WHEN dirty = 1 THEN synced_at         ELSE excluded.synced_at         END,
       deleted_locally   = 0
@@ -808,13 +805,6 @@ function atualizarComerciante(id, data) {
       nome=@nome, email=@email, cpf=@cpf, celular=@celular, telefone=@telefone, cnpj=@cnpj, dirty=@dirty
     WHERE id_comerciante=@id_comerciante
   `).run(merged)
-  return rowToComerciante(db.prepare('SELECT * FROM comerciantes WHERE id_comerciante = ?').get(id))
-}
-
-function atualizarComercianteDashboard(id, enabled) {
-  const existing = db.prepare('SELECT * FROM comerciantes WHERE id_comerciante = ?').get(id)
-  if (!existing) throw new Error(`Comerciante ${id} nao encontrado`)
-  db.prepare('UPDATE comerciantes SET dashboard_enabled = ?, dirty = 1 WHERE id_comerciante = ?').run(enabled ? 1 : 0, id)
   return rowToComerciante(db.prepare('SELECT * FROM comerciantes WHERE id_comerciante = ?').get(id))
 }
 
@@ -1077,7 +1067,7 @@ module.exports = {
   listarAvaliacoes, listarTodasAvaliacoes, listarAvaliacoesPorLoja, upsertAvaliacao, atualizarAvaliacao, marcarAvaliacaoSync, marcarAvaliacaoExcluida, removerAvaliacao,
   listarConsumidores, listarTodosConsumidores, upsertConsumidor, atualizarConsumidor, marcarConsumidorSync, marcarConsumidorExcluido, removerConsumidor,
   listarComerciantes, listarTodosComerciantes, upsertComerciante, marcarComercianteExcluido, removerComerciante,
-  atualizarComerciante, atualizarComercianteDashboard, marcarComercianteSync,
+  atualizarComerciante, marcarComercianteSync,
   listarLojasDoComerciante, removerLoja,
   upsertPost, listarTodosPosts, removerPost,
   addPendingOp, getPendingOps, removePendingOp, incrementPendingOpRetry,

@@ -104,7 +104,6 @@ function buildComercianteProfilePayload(p) {
     celular: p.celular ?? null,
     telefone: p.telefone ?? null,
     cnpj: p.cnpj ?? null,
-    dashboardEnabled: !!p.dashboardEnabled,
     imagemUrl: p.imagemUrl ?? null,
   }
 }
@@ -142,10 +141,6 @@ async function pushPendingOps(token) {
           payload = buildComercianteProfilePayload(op.payload)
         }
         if (apiPath) await httpRequest(method, apiPath, payload, token)
-      } else if (op.operation === 'update_dashboard') {
-        if (op.entity === 'comerciante') {
-          await httpRequest('PATCH', `/comerciantes/${op.entity_id}/dashboard`, { dashboardEnabled: !!op.payload.dashboardEnabled }, token)
-        }
       } else if (op.operation === 'delete') {
         const pathMap = {
           avaliacao: `/avaliacoes/${op.entity_id}`,
@@ -156,6 +151,8 @@ async function pushPendingOps(token) {
         const apiPath = pathMap[op.entity]
         if (apiPath) await httpRequest('DELETE', apiPath, null, token)
       }
+      // update_dashboard: op legada (controle de acesso removido) que ainda pode estar
+      // na fila local — não chama a API, só libera o comerciante marcado como dirty.
       if (op.operation === 'update' || op.operation === 'update_dashboard') {
         marcarOpSync(op.entity, op.entity_id)
       }

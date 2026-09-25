@@ -240,9 +240,6 @@ export async function deletarComercianteCascade(id) {
 export async function verificarDadosComerciante(id) {
   return window.electronAPI?.db.verificarDadosComerciante(id)
 }
-export async function atualizarComercianteDashboard(id, enabled) {
-  return window.electronAPI?.db.atualizarComercianteDashboard(id, enabled)
-}
 
 // Relatorios — via IPC
 export async function getRelatorioStats() {
