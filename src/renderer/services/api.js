@@ -1,8 +1,5 @@
 const BASE_URL = 'http://localhost:8080'
 
-// Precisa ser idêntica a mapfood.desktop.chave no application.properties da API.
-// Usada só nos endpoints de imagem, que não dependiam do JWT de login por causa
-// de um bug não identificado que fazia essas chamadas específicas voltarem 401.
 const CHAVE_DESKTOP = 'mapfood-desktop-admin-2026-2f8a91c4e7'
 
 // Imagens vêm do backend como caminho relativo (ex: "/uploads/lojas/xxx.jpg")

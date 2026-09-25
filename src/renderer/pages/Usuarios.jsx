@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { listarConsumidores, listarComerciantes, atualizarConsumidor, deletarConsumidor, deletarConsumidorCascade, verificarDadosConsumidor, atualizarComerciante, deletarComerciante, deletarComercianteCascade, verificarDadosComerciante, atualizarComercianteDashboard, resolveImagemUrl, criarConsumidor, criarComerciante, listarAdministradores, criarAdministrador, atualizarAdministrador, deletarAdministrador, enviarImagemConsumidor, removerImagemConsumidor, enviarImagemComerciante, removerImagemComerciante } from '../services/api'
+import { listarConsumidores, listarComerciantes, atualizarConsumidor, deletarConsumidor, deletarConsumidorCascade, verificarDadosConsumidor, atualizarComerciante, deletarComerciante, deletarComercianteCascade, verificarDadosComerciante, resolveImagemUrl, criarConsumidor, criarComerciante, listarAdministradores, criarAdministrador, atualizarAdministrador, deletarAdministrador, enviarImagemConsumidor, removerImagemConsumidor, enviarImagemComerciante, removerImagemComerciante } from '../services/api'
 import EditModal from '../components/EditModal'
 import EditarImagemModal from '../components/EditarImagemModal'
 import Icon from '../components/Icon'
@@ -65,7 +65,6 @@ export default function Usuarios() {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState(null)
   const [removendo, setRemovendo] = useState(null)
-  const [alterandoDashboard, setAlterandoDashboard] = useState(null)
   const [editandoConsumidor, setEditandoConsumidor] = useState(null)
   const [editandoComerciante, setEditandoComerciante] = useState(null)
   const [editandoImagemConsumidor, setEditandoImagemConsumidor] = useState(null)
@@ -196,21 +195,6 @@ export default function Usuarios() {
       setErro('Erro ao remover comerciante.')
     } finally {
       setRemovendo(null)
-    }
-  }
-
-  async function handleToggleDashboard(id, novoEstado) {
-    setErro(null)
-    setAlterandoDashboard(id)
-    try {
-      await atualizarComercianteDashboard(id, novoEstado)
-      setComerciantes(prev =>
-        prev.map(c => c.id_comerciante === id ? { ...c, dashboardEnabled: novoEstado } : c)
-      )
-    } catch (e) {
-      setErro('Erro ao alterar permissão de dashboard.')
-    } finally {
-      setAlterandoDashboard(null)
     }
   }
 
@@ -495,7 +479,6 @@ export default function Usuarios() {
                       <th>Celular</th>
                       <th>Telefone</th>
                       <th>CNPJ</th>
-                      <th title="Libera/bloqueia Dashboard Analítico e Blog juntos">Dash e Blog</th>
                       <th>Ações</th>
                     </tr>
                   </thead>
@@ -522,11 +505,6 @@ export default function Usuarios() {
                         <td>{c.telefone || '—'}</td>
                         <td>{c.cnpj || '—'}</td>
                         <td>
-                          <span className={c.dashboardEnabled ? 'badge badge-success' : 'badge badge-muted'}>
-                            {c.dashboardEnabled ? 'Liberado' : 'Bloqueado'}
-                          </span>
-                        </td>
-                        <td>
                           <div style={{ display: 'flex', gap: '0.4rem' }}>
                             <button
                               className="btn-icon btn-secondary"
@@ -535,25 +513,6 @@ export default function Usuarios() {
                             >
                               <Icon name="edit" />
                             </button>
-                            {c.dashboardEnabled ? (
-                              <button
-                                className="btn-icon btn-danger"
-                                title="Retirar acesso ao Dashboard e Blog"
-                                disabled={alterandoDashboard === c.id_comerciante}
-                                onClick={() => handleToggleDashboard(c.id_comerciante, false)}
-                              >
-                                <Icon name="lock" />
-                              </button>
-                            ) : (
-                              <button
-                                className="btn-icon btn-secondary"
-                                title="Liberar acesso ao Dashboard e Blog"
-                                disabled={alterandoDashboard === c.id_comerciante}
-                                onClick={() => handleToggleDashboard(c.id_comerciante, true)}
-                              >
-                                <Icon name="unlock" />
-                              </button>
-                            )}
                             <button
                               className="btn-icon btn-danger"
                               title="Remover"
