@@ -38,6 +38,8 @@ function lojaToRow(loja) {
     comerciante_nome: loja.comerciante?.nome ?? loja.comercianteNome ?? null,
     imagem_url: loja.imagemUrl ?? null,
     galeria: Array.isArray(loja.galeria) ? JSON.stringify(loja.galeria) : null,
+    tipo_loja: loja.tipoLoja ?? loja.tipo_loja ?? 'GRATUITO',
+    destaque_solicitado_em: normalizarData(loja.destaqueSolicitadoEm),
     synced_at: new Date().toISOString(),
   }
 }
@@ -48,6 +50,8 @@ function rowToLoja(row) {
     nome: row.nome,
     descricao: row.descricao,
     statusLoja: row.status_loja,
+    tipoLoja: row.tipo_loja || 'GRATUITO',
+    destaqueSolicitadoEm: row.destaque_solicitado_em || null,
     dataCadastro: row.data_cadastro,
     comercianteId: row.comerciante_id,
     comercianteNome: row.comerciante_nome,
@@ -207,7 +211,9 @@ CREATE TABLE IF NOT EXISTS lojas (
   imagem_url       TEXT,
   galeria          TEXT,
   synced_at        TEXT,
-  dirty            INTEGER DEFAULT 0
+  dirty            INTEGER DEFAULT 0,
+  tipo_loja        TEXT DEFAULT 'GRATUITO',
+  destaque_solicitado_em TEXT
 );
 
 CREATE TABLE IF NOT EXISTS denuncias (
@@ -453,6 +459,22 @@ function _runMigrations() {
   if (v10Aplicada) {
     db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (10)').run()
   }
+
+  // v11: campo tipo_loja (GRATUITO / DESTAQUE) nas lojas
+  const lojasColsV11 = db.prepare("PRAGMA table_info(lojas)").all().map(r => r.name)
+  if (!lojasColsV11.includes('tipo_loja')) {
+    db.prepare("ALTER TABLE lojas ADD COLUMN tipo_loja TEXT DEFAULT 'GRATUITO'").run()
+    console.log('[database] Migration v11: lojas.tipo_loja')
+    db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (11)').run()
+  }
+
+  // v12: pedido de Plano Destaque feito pelo comerciante na Web
+  const lojasColsV12 = db.prepare("PRAGMA table_info(lojas)").all().map(r => r.name)
+  if (!lojasColsV12.includes('destaque_solicitado_em')) {
+    db.prepare('ALTER TABLE lojas ADD COLUMN destaque_solicitado_em TEXT').run()
+    console.log('[database] Migration v12: lojas.destaque_solicitado_em')
+    db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (12)').run()
+  }
 }
 
 function _limparDuplicatas() {
@@ -486,8 +508,8 @@ function listarLojas() {
 function upsertLoja(loja) {
   const row = lojaToRow(loja)
   db.prepare(`
-    INSERT INTO lojas (id, nome, descricao, status_loja, data_cadastro, comerciante_id, comerciante_nome, imagem_url, galeria, synced_at, dirty)
-    VALUES (@id, @nome, @descricao, @status_loja, @data_cadastro, @comerciante_id, @comerciante_nome, @imagem_url, @galeria, @synced_at, 0)
+    INSERT INTO lojas (id, nome, descricao, status_loja, data_cadastro, comerciante_id, comerciante_nome, imagem_url, galeria, tipo_loja, destaque_solicitado_em, synced_at, dirty)
+    VALUES (@id, @nome, @descricao, @status_loja, @data_cadastro, @comerciante_id, @comerciante_nome, @imagem_url, @galeria, @tipo_loja, @destaque_solicitado_em, @synced_at, 0)
     ON CONFLICT(id) DO UPDATE SET
       nome             = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN nome             ELSE excluded.nome             END,
       descricao        = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN descricao        ELSE excluded.descricao        END,
@@ -497,6 +519,9 @@ function upsertLoja(loja) {
       comerciante_nome = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN comerciante_nome ELSE excluded.comerciante_nome END,
       imagem_url       = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN imagem_url       ELSE excluded.imagem_url       END,
       galeria          = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN galeria          ELSE excluded.galeria          END,
+      tipo_loja        = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN tipo_loja        ELSE excluded.tipo_loja        END,
+      -- Pedido de Destaque é estado só do servidor (o Desktop nunca edita): sempre segue a API
+      destaque_solicitado_em = excluded.destaque_solicitado_em,
       synced_at        = CASE WHEN dirty = 1 OR deleted_locally = 1 THEN synced_at        ELSE excluded.synced_at        END,
       deleted_locally  = CASE WHEN deleted_locally = 1 THEN 1 ELSE 0 END
   `).run(row)
@@ -521,8 +546,9 @@ function atualizarLoja(id, data) {
   db.prepare(`
     UPDATE lojas SET
       nome=@nome, descricao=@descricao, status_loja=@status_loja,
-      data_cadastro=@data_cadastro, comerciante_id=@comerciante_id,
-      comerciante_nome=@comerciante_nome, dirty=@dirty
+      tipo_loja=@tipo_loja, data_cadastro=@data_cadastro,
+      comerciante_id=@comerciante_id, comerciante_nome=@comerciante_nome,
+      dirty=@dirty
     WHERE id=@id
   `).run(merged)
   return rowToLoja(db.prepare('SELECT * FROM lojas WHERE id = ?').get(id))
@@ -880,13 +906,21 @@ function verificarDadosComerciante(comercianteId) {
 function getDashboardStats() {
   const totalLojas = db.prepare('SELECT COUNT(*) as c FROM lojas WHERE deleted_locally = 0').get().c
   const lojasAtivas = db.prepare("SELECT COUNT(*) as c FROM lojas WHERE status_loja = 'ATIVA' AND deleted_locally = 0").get().c
+  const lojasDestaque = db.prepare("SELECT COUNT(*) as c FROM lojas WHERE tipo_loja = 'DESTAQUE' AND deleted_locally = 0").get().c
+  const pedidosDestaque = db.prepare("SELECT COUNT(*) as c FROM lojas WHERE destaque_solicitado_em IS NOT NULL AND tipo_loja != 'DESTAQUE' AND deleted_locally = 0").get().c
   const totalConsumidores = db.prepare('SELECT COUNT(*) as c FROM consumidores WHERE deleted_locally = 0').get().c
   const totalComerciantes = db.prepare('SELECT COUNT(*) as c FROM comerciantes WHERE deleted_locally = 0').get().c
   const denunciasPendentes = db.prepare("SELECT COUNT(*) as c FROM denuncias WHERE status_denuncia = 'PENDENTE' AND deleted_locally = 0").get().c
   const totalAvaliacoes = db.prepare('SELECT COUNT(*) as c FROM avaliacoes WHERE deleted_locally = 0').get().c
   const denunciasRecentes = db.prepare('SELECT * FROM denuncias WHERE deleted_locally = 0 ORDER BY data_denuncia DESC LIMIT 5').all().map(rowToDenuncia)
+  // Fila de pedidos de Destaque feitos na Web, do mais antigo para o mais novo (ordem de atendimento)
+  const listaPedidosDestaque = db.prepare(`
+    SELECT * FROM lojas
+    WHERE destaque_solicitado_em IS NOT NULL AND tipo_loja != 'DESTAQUE' AND deleted_locally = 0
+    ORDER BY destaque_solicitado_em ASC
+  `).all().map(rowToLoja)
 
-  return { totalLojas, lojasAtivas, totalConsumidores, totalComerciantes, denunciasPendentes, totalAvaliacoes, denunciasRecentes }
+  return { totalLojas, lojasAtivas, lojasDestaque, pedidosDestaque, totalConsumidores, totalComerciantes, denunciasPendentes, totalAvaliacoes, denunciasRecentes, listaPedidosDestaque }
 }
 
 // ─── Posts (blog) ──────────────────────────────────────────────────────────

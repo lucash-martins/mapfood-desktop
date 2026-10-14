@@ -4,6 +4,7 @@ export function useSyncStatus() {
   const [estado, setEstado] = useState('idle')
   const [ultimaSync, setUltimaSync] = useState(null)
   const [mensagem, setMensagem] = useState(null)
+  const [aviso, setAviso] = useState(null)
 
   useEffect(() => {
     window.electronAPI?.sync.getUltimaSync().then(setUltimaSync)
@@ -12,9 +13,10 @@ export function useSyncStatus() {
       if (status.estado !== 'erro') setMensagem(null)
       if (status.mensagem) setMensagem(status.mensagem)
       if (status.timestamp) setUltimaSync(status.timestamp)
+      if (status.estado === 'idle') setAviso(status.aviso ?? null)
     })
     return () => unsubscribe?.()
   }, [])
 
-  return { estado, ultimaSync, mensagem }
+  return { estado, ultimaSync, mensagem, aviso }
 }

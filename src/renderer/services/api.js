@@ -199,12 +199,29 @@ export async function deletarAvaliacao(id) {
   return window.electronAPI?.db.deletarAvaliacao(id)
 }
 
-// Lojas — via IPC
+// Lojas — via IPC (com fallback via API fetch)
 export async function listarLojas() {
-  return window.electronAPI?.db.listarLojas()
+  if (window.electronAPI?.db?.listarLojas) {
+    return window.electronAPI.db.listarLojas()
+  }
+  return apiFetch('/lojas')
 }
 export async function atualizarLoja(id, data) {
-  return window.electronAPI?.db.atualizarLoja(id, data)
+  if (window.electronAPI?.db?.atualizarLoja) {
+    return window.electronAPI.db.atualizarLoja(id, data)
+  }
+  return apiFetchAutenticado(`/lojas/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+// Recusa o pedido de Plano Destaque feito pelo comerciante na Web (sempre precisa de rede).
+// Depois do sucesso, força um sync para o pedido sumir do cache local.
+export async function recusarSolicitacaoDestaque(id) {
+  const atualizado = await apiFetchAutenticado(`/lojas/${id}/solicitar-destaque`, { method: 'DELETE' })
+  window.electronAPI?.sync.forcarSync()
+  return atualizado
 }
 
 // Consumidores — via IPC

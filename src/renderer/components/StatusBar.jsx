@@ -16,7 +16,7 @@ function formatarData(iso) {
 
 export default function StatusBar() {
   const { online } = useConectividade()
-  const { estado, ultimaSync } = useSyncStatus()
+  const { estado, ultimaSync, aviso } = useSyncStatus()
 
   const syncing = estado === 'syncing'
   const desabilitado = !online || syncing
@@ -34,6 +34,11 @@ export default function StatusBar() {
       <div className="status-bar-sync">
         {ultimaSync ? `Última sync: ${formatarData(ultimaSync)}` : 'Nunca sincronizado'}
       </div>
+      {aviso && (
+        <div className="status-bar-sync" style={{ color: 'var(--warning)' }} role="alert">
+          {aviso}
+        </div>
+      )}
       <button className="status-bar-btn" onClick={handleSync} disabled={desabilitado}>
         {syncing ? 'Sincronizando...' : 'Sincronizar agora'}
       </button>

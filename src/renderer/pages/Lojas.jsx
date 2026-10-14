@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { listarLojas, atualizarLoja, resolveImagemUrl, enviarImagemLoja, removerImagemLoja, enviarGaleriaLoja, removerImagemGaleriaLoja } from '../services/api'
+import { listarLojas, atualizarLoja, recusarSolicitacaoDestaque, resolveImagemUrl, enviarImagemLoja, removerImagemLoja, enviarGaleriaLoja, removerImagemGaleriaLoja } from '../services/api'
 import EditModal from '../components/EditModal'
 import EditarImagemModal from '../components/EditarImagemModal'
 import Icon from '../components/Icon'
@@ -237,11 +237,16 @@ function badgeClass(status) {
 }
 
 const FILTROS_STATUS = ['Todas', 'ATIVA', 'INATIVA', 'SUSPENSA']
+const FILTROS_PLANO = ['Todos os planos', 'DESTAQUE', 'GRATUITO', 'PEDIDOS']
+
+// Pedido de Destaque feito na Web que o administrador ainda não atendeu
+const temPedidoDestaque = (loja) => !!loja.destaqueSolicitadoEm && loja.tipoLoja !== 'DESTAQUE'
 
 export default function Lojas() {
   const [lojas, setLojas] = useState([])
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('Todas')
+  const [filtroPlano, setFiltroPlano] = useState('Todos os planos')
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState(null)
   const [atualizando, setAtualizando] = useState(null)
@@ -281,10 +286,51 @@ export default function Lojas() {
     }
   }
 
+  async function handleMudarTipoLoja(loja, novoTipo) {
+    setAtualizando(loja.id)
+    setErro(null)
+    try {
+      await atualizarLoja(loja.id, { tipoLoja: novoTipo })
+      setLojas(prev =>
+        prev.map(l => l.id === loja.id ? { ...l, tipoLoja: novoTipo } : l)
+      )
+    } catch (e) {
+      setErro(e?.message || 'Erro ao atualizar plano da loja.')
+    } finally {
+      setAtualizando(null)
+    }
+  }
+
+  async function handleRecusarPedido(loja) {
+    setAtualizando(loja.id)
+    setErro(null)
+    try {
+      await recusarSolicitacaoDestaque(loja.id)
+      setLojas(prev =>
+        prev.map(l => l.id === loja.id ? { ...l, destaqueSolicitadoEm: null } : l)
+      )
+    } catch (e) {
+      setErro(e?.status === 401
+        ? 'Sessão expirada. Saia e entre novamente para recusar o pedido.'
+        : e?.message || 'Erro ao recusar o pedido de destaque.')
+    } finally {
+      setAtualizando(null)
+    }
+  }
+
   async function handleSalvarEdicao(loja, valores) {
-    await atualizarLoja(loja.id, { nome: valores.nome, descricao: valores.descricao })
+    await atualizarLoja(loja.id, {
+      nome: valores.nome,
+      descricao: valores.descricao,
+      tipoLoja: valores.tipoLoja || 'GRATUITO',
+    })
     setLojas(prev =>
-      prev.map(l => l.id === loja.id ? { ...l, nome: valores.nome, descricao: valores.descricao } : l)
+      prev.map(l => l.id === loja.id ? {
+        ...l,
+        nome: valores.nome,
+        descricao: valores.descricao,
+        tipoLoja: valores.tipoLoja || 'GRATUITO',
+      } : l)
     )
     setEditando(null)
   }
@@ -307,7 +353,14 @@ export default function Lojas() {
 
   const lojasFiltradas = lojas
     .filter(l => filtroStatus === 'Todas' || l.statusLoja === filtroStatus)
+    .filter(l => {
+      if (filtroPlano === 'Todos os planos') return true
+      if (filtroPlano === 'PEDIDOS') return temPedidoDestaque(l)
+      return (l.tipoLoja || 'GRATUITO') === filtroPlano
+    })
     .filter(l => !busca.trim() || l.nome?.toLowerCase().includes(busca.trim().toLowerCase()))
+
+  const totalPedidos = lojas.filter(temPedidoDestaque).length
 
   return (
     <div className="page">
@@ -327,7 +380,7 @@ export default function Lojas() {
               onChange={e => setBusca(e.target.value)}
             />
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             {FILTROS_STATUS.map(f => (
               <button
                 key={f}
@@ -336,6 +389,20 @@ export default function Lojas() {
                 style={{ width: 'auto' }}
               >
                 {f}
+              </button>
+            ))}
+            <span style={{ borderLeft: '1px solid var(--border)', height: '24px', margin: '0 0.25rem' }} />
+            {FILTROS_PLANO.map(f => (
+              <button
+                key={f}
+                onClick={() => setFiltroPlano(f)}
+                className={filtroPlano === f ? (f === 'DESTAQUE' ? 'btn-destaque' : 'btn-primary') : 'btn-secondary'}
+                style={{ width: 'auto' }}
+              >
+                {f === 'DESTAQUE' ? '⭐ Destaque'
+                  : f === 'GRATUITO' ? 'Gratuito'
+                  : f === 'PEDIDOS' ? `Pedidos de destaque (${totalPedidos})`
+                  : f}
               </button>
             ))}
           </div>
@@ -358,6 +425,7 @@ export default function Lojas() {
                   <th>Descrição</th>
                   <th>Comerciante</th>
                   <th>Status</th>
+                  <th>Plano</th>
                   <th>Data Cadastro</th>
                   <th>Editar</th>
                   <th>Ações</th>
@@ -368,6 +436,7 @@ export default function Lojas() {
                   const descricao = loja.descricao?.length > 60
                     ? loja.descricao.substring(0, 60) + '...'
                     : loja.descricao
+                  const isDestaque = loja.tipoLoja === 'DESTAQUE'
                   return (
                   <tr key={loja.id}>
                     <td><FotoCell loja={loja} onEditarImagem={setEditandoImagem} onGaleriaChange={handleGaleriaChange} /></td>
@@ -376,6 +445,20 @@ export default function Lojas() {
                     <td style={{ maxWidth: 220 }}>{descricao || '—'}</td>
                     <td>{loja.comerciante?.nome || '—'}</td>
                     <td><span className={badgeClass(loja.statusLoja)}>{loja.statusLoja}</span></td>
+                    <td>
+                      <span className={isDestaque ? 'badge badge-destaque' : 'badge badge-muted'}>
+                        {isDestaque ? '⭐ Destaque' : 'Gratuito'}
+                      </span>
+                      {temPedidoDestaque(loja) && (
+                        <span
+                          className="badge badge-warning"
+                          style={{ marginLeft: '0.35rem' }}
+                          title={`Pedido feito na Web em ${new Date(loja.destaqueSolicitadoEm).toLocaleString('pt-BR')}`}
+                        >
+                          Pedido de destaque
+                        </span>
+                      )}
+                    </td>
                     <td>{loja.dataCadastro ? new Date(loja.dataCadastro).toLocaleDateString('pt-BR') : '—'}</td>
                     <td>
                       <button
@@ -388,6 +471,35 @@ export default function Lojas() {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        {isDestaque ? (
+                          <button
+                            className="btn-icon btn-secondary"
+                            title="Remover destaque (voltar para Gratuito)"
+                            disabled={atualizando === loja.id}
+                            onClick={() => handleMudarTipoLoja(loja, 'GRATUITO')}
+                          >
+                            <Icon name="star" />
+                          </button>
+                        ) : (
+                          <button
+                            className="btn-icon btn-destaque"
+                            title="Promover a Destaque (Plano Destaque)"
+                            disabled={atualizando === loja.id}
+                            onClick={() => handleMudarTipoLoja(loja, 'DESTAQUE')}
+                          >
+                            <Icon name="star" />
+                          </button>
+                        )}
+                        {temPedidoDestaque(loja) && (
+                          <button
+                            className="btn-icon btn-secondary"
+                            title="Recusar pedido de destaque"
+                            disabled={atualizando === loja.id}
+                            onClick={() => handleRecusarPedido(loja)}
+                          >
+                            <Icon name="ban" />
+                          </button>
+                        )}
                         {loja.statusLoja === 'ATIVA' && (
                           <button
                             className="btn-icon btn-secondary"
@@ -445,8 +557,20 @@ export default function Lojas() {
           fields={[
             { name: 'nome', label: 'Nome' },
             { name: 'descricao', label: 'Descrição', type: 'textarea' },
+            {
+              name: 'tipoLoja',
+              label: 'Plano da Loja',
+              type: 'select',
+              options: [
+                { value: 'GRATUITO', label: 'Plano Gratuito' },
+                { value: 'DESTAQUE', label: 'Plano Destaque (Assinante)' },
+              ],
+            },
           ]}
-          initialValues={editando}
+          initialValues={{
+            ...editando,
+            tipoLoja: editando.tipoLoja || 'GRATUITO',
+          }}
           onSave={(valores) => handleSalvarEdicao(editando, valores)}
           onClose={() => setEditando(null)}
         />

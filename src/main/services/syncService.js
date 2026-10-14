@@ -66,6 +66,7 @@ function buildLojaPayload(p) {
     descricao: p.descricao ?? null,
     statusLoja: p.statusLoja ?? null,
     dataCadastro: p.dataCadastro ?? null,
+    tipoLoja: p.tipoLoja ?? null,
   }
 }
 
@@ -116,8 +117,11 @@ function marcarOpSync(entity, entityId) {
   if (entity === 'comerciante') database.marcarComercianteSync(entityId)
 }
 
+// Retorna { sessaoExpirada } para o sync avisar a UI: com o token recusado (401/403) nada
+// da fila chega à API, e sem aviso a alteração parece feita mas nunca sai do Desktop.
 async function pushPendingOps(token) {
   const ops = database.getPendingOps()
+  let sessaoExpirada = false
   for (const op of ops) {
     try {
       if (op.operation === 'update') {
@@ -165,6 +169,7 @@ async function pushPendingOps(token) {
       }
     } catch (err) {
       console.error(`[sync] Push ${op.entity}#${op.entity_id} falhou:`, err.status, err.message)
+      if (err.status === 401 || err.status === 403) sessaoExpirada = true
       // 401/403 indicam sessão inválida (ex: admin_token expirado), não um dado inválido —
       // descartar aqui apagaria a alteração do usuário silenciosamente. Mantém na fila para
       // retry após novo login, como em erros de rede/servidor.
@@ -187,6 +192,7 @@ async function pushPendingOps(token) {
       }
     }
   }
+  return { sessaoExpirada }
 }
 
 // ─── Pull from server ──────────────────────────────────────────────────────
@@ -330,7 +336,7 @@ async function syncCompleto(win) {
       return { sucesso: false, erro: 'Sem token' }
     }
 
-    await pushPendingOps(token)
+    const { sessaoExpirada } = await pushPendingOps(token)
     await pullAll(token)
 
     const timestamp = new Date().toISOString()
@@ -338,7 +344,10 @@ async function syncCompleto(win) {
 
     notificationService.verificarDenuncias(w)
 
-    if (w) w.webContents.send('sync:status-changed', { estado: 'idle', timestamp })
+    const aviso = sessaoExpirada
+      ? 'Sessão expirada: saia e entre novamente para enviar as alterações pendentes.'
+      : null
+    if (w) w.webContents.send('sync:status-changed', { estado: 'idle', timestamp, aviso })
     console.log('[sync] Sync concluido em', timestamp)
     return { sucesso: true }
   } catch (err) {

@@ -684,6 +684,12 @@ tbody tr:hover td {
 .badge-warning { background: rgba(245, 158, 11, 0.12); color: var(--warning); }
 .badge-danger  { background: rgba(239, 68, 68, 0.12);  color: var(--danger);  }
 .badge-muted   { background: rgba(107, 114, 128, 0.12); color: var(--text-muted); }
+.badge-destaque {
+  background: rgba(245, 158, 11, 0.18);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  font-weight: 600;
+}
 
 /* ── Utility buttons ── */
 .btn-danger {
@@ -700,6 +706,14 @@ tbody tr:hover td {
   font-size: 0.8rem;
 }
 .btn-secondary:hover { background: var(--border); }
+
+.btn-destaque {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+  font-size: 0.8rem;
+}
+.btn-destaque:hover:not(:disabled) { background: #fde68a; }
 
 .btn-icon {
   width: 2.1rem;
